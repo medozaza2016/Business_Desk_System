@@ -247,3 +247,32 @@ Known gaps and caveats:
 ## 12. Production readiness statement
 
 **Not production-ready.** Administrator bootstrap is currently blocked by an unresolved HTTP 500. Do not use the application for live business quotations until bootstrap, authentication, authorization isolation, data integrity, template security, backups, and acceptance tests have been verified.
+
+
+## 13. Supplied Challenger Cars design reference and template delivery
+
+A visual reference for the bilingual Challenger Cars quotation was supplied on 5 November 2026. The repository template `templates/default-quotation.html` has since been rebuilt as a full-page A4 portrait document based on that reference.
+
+The delivered layout includes:
+- Brand header with the supplied winged-C logo crop embedded directly in the HTML.
+- Arabic and English company headings and bilingual quotation title.
+- Quotation number and date fields.
+- Preliminary valuation introduction in Arabic and English.
+- Vehicle model, year, and chassis detail rows.
+- Estimated value field and bilingual value statement.
+- Notes, signature and stamp boxes.
+- Company contact footer and bottom brand stripe.
+
+The template uses the application's existing replacement fields, including `quote_number`, `quote_date`, `model`, `year`, `chassis`, `currency`, `amount`, `amount_words`, `company_phone`, `company_email`, and `company_address`. The HTML is self-contained and does not require an external letterhead URL. The Worker formats quotation dates before template rendering and owns the print-dialog invocation, so the HTML template intentionally contains no inline JavaScript.
+
+**Visual QA still required:** compare browser print output against the supplied image on A4 paper, especially Arabic font rendering, line wrapping, and printer margins. The supplied screenshot is a visual reference, not an original editable design file. The template should not be described as pixel-perfect until this print comparison is completed.
+
+**Integration status:** the template is committed to GitHub, but it has not yet been activated as a versioned template record for a company in D1. Administrator bootstrap remains unresolved, so application-level activation and print validation are pending.
+
+## 14. Marshall Auctions quotation template
+
+A second company-specific HTML template has been added at `templates/marshall-auction-quotation.html`. It follows the same A4 portrait dimensions, field positions, bilingual quotation structure, vehicle detail grid, estimated value section, valuation statement, notes, signature/stamp areas, and contact footer as the Challenger Cars template.
+
+The visual identity is distinct, using a navy-and-gold palette and an inline SVG Marshall Auctions monogram/gavel emblem. The template preserves the shared rendering placeholders so the same quotation data model can populate both company templates.
+
+This is a newly authored generic Marshall Auctions identity treatment, not an official supplied logo or verified corporate brand standard. Replace the placeholder emblem and confirm the exact legal company name, Arabic name, contact details, and approved colors before production use. Browser print QA on A4 remains required.
