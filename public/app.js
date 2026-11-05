@@ -191,10 +191,15 @@ function renderCompanySelect() {
 function switchCompany(id) {
   state.companyId = id;
   storage.set("q_company", id);
+  /* every version, editor buffer and preview belongs to the old company */
+  state.templates = [];
+  state.templateEditId = null;
+  renderCompanySelect();
   paintCompanyChrome();
   paintCompanySettings();
   refreshNextNumber();
   loadQuotes();
+  if (state.settingsOpen) void refreshStudio();
 }
 
 /* -------------------------------------------------------------- numbering --- */
@@ -543,6 +548,18 @@ function renderVersionList() {
   markActiveVersion();
 }
 
+/** Blanks the studio and re-reads the versions of the company now in focus. */
+async function refreshStudio() {
+  $("templateList").textContent = "";
+  $("templateHtml").value = "";
+  $("templateName").value = "";
+  $("editorHint").textContent = "flat {{placeholders}}";
+  $("templateChip").textContent = "loading";
+  $("templateMeta").textContent = "loading versions";
+  paintSheet("", "draft", "loading versions");
+  await loadTemplates();
+}
+
 async function loadTemplates(selectId) {
   const company = activeCompany();
   $("templateList").textContent = "";
@@ -554,6 +571,8 @@ async function loadTemplates(selectId) {
   }
   try {
     const data = await api(`/api/companies/${encodeURIComponent(company.id)}/templates`);
+    /* the desk may have changed while this request was in flight */
+    if (company.id !== state.companyId) return;
     state.templates = data.templates || [];
   } catch (error) {
     toast(humanError(error), "error");
@@ -747,13 +766,15 @@ function showView(name) {
 async function openSettings(pane) {
   showView("settings");
   showSettingsPane(pane || new URLSearchParams(location.search).get("pane") || state.settingsPane || "company");
-  await loadTemplates();
+  await refreshStudio();
 }
 
 async function signOut(message) {
   try { await api("/api/auth/logout", { method: "POST" }); } catch { /* already gone */ }
   state.status = { setup: true, signed_in: false, session_hours: state.status?.session_hours || 12 };
   state.quotes = [];
+  state.templates = [];
+  state.templateEditId = null;
   renderGate(state.status);
   if (message) gateError(message);
 }
