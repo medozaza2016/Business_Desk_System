@@ -31,7 +31,7 @@ default answer, which is "yes".
 
 1. Open `https://quote.ahmedmohamed.org`.
 2. The desk asks for a passcode because `POST /api/setup` has never been called (`setup:false`).
-3. Enter the shared passcode (6+ characters) and, optionally, your name. This:
+3. Enter the shared passcode (6+ characters). This:
    - stores `PBKDF2-SHA256(passcode, salt, 100000)` in `settings.auth_passcode`,
    - seeds company **Challenger Cars** with template v1,
    - signs you in and drops the signed cookie.
@@ -70,7 +70,9 @@ npx wrangler d1 execute challenger-quotation-db --remote \
 `audit_events` records `auth.setup`, `auth.passcode_rotated`, `company.created`, `company.updated`,
 `company.deactivated`, `template.saved`, `template.activated`, `quotation.created`, `quotation.updated`
 and `quotation.cancelled`. Writes are fire-and-forget through `ctx.waitUntil`, so a failed audit insert
-never fails a request.
+never fails a request. `actor` is `Shared user` for every browser session, because the desk collects
+only the passcode; `POST /api/setup` and `POST /api/auth/login` still accept an optional `name`, so
+scripted changes can be attributed.
 
 ## Letterhead artwork
 

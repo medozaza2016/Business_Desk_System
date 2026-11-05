@@ -29,7 +29,9 @@ Errors always look like `{ "error": "machine_readable_code" }` with a matching H
 | `POST` | `/api/auth/logout` | – | `{signed_in:false}`, clears the cookie |
 | `GET` | `/api/companies/:id/logo` | – | Raw logo bytes with their stored `content-type`; `404 logo_not_found` when the company has none. Public because the print previews run in sandboxed iframes (see below) |
 
-Passcode rules: 6–200 characters. `name` (optional, ≤60 chars) only tags the audit trail.
+Passcode rules: 6–200 characters. `name` (optional, ≤60 chars) only tags the audit trail
+(`audit_events.actor`) and the header chip. The desk UI does not ask for it, so browser sessions are
+recorded as `Shared user`; send it from scripts or curl when you want attribution.
 
 ### Protected routes
 

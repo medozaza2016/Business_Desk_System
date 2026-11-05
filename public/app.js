@@ -131,7 +131,6 @@ function renderGate(status) {
   $("gateFoot").textContent = setupMode
     ? "A starter company (Challenger Cars) and the bilingual A4 template are created with the passcode."
     : `Sessions last ${status.session_hours || 12} hours. Rotate the passcode any time in Settings.`;
-  $("nameField").hidden = false;
   showGate();
 }
 
@@ -145,14 +144,14 @@ async function submitGate(event) {
   event.preventDefault();
   gateError("");
   const passcode = $("gatePasscode").value;
-  const name = $("gateName").value.trim();
   if (!passcode) { gateError("Enter the passcode."); return; }
   const setupMode = !state.status?.setup;
   const button = $("gateSubmit");
   button.disabled = true;
   button.textContent = setupMode ? "Creating…" : "Unlocking…";
   try {
-    await api(setupMode ? "/api/setup" : "/api/auth/login", { method: "POST", body: { passcode, name } });
+    /* no name is collected at the gate: desk sessions are audited as "Shared user" */
+    await api(setupMode ? "/api/setup" : "/api/auth/login", { method: "POST", body: { passcode } });
     $("gatePasscode").value = "";
     await boot();
     if (setupMode) toast("Desk created. Add company details in Settings.");
@@ -901,7 +900,9 @@ async function boot() {
     return;
   }
   state.status = status;
-  $("sessionChip").textContent = status.signed_in ? (status.name || "signed in") : "locked";
+  /* the gate collects no name, so a browser session reports the "Shared user" fallback */
+  const who = status.name && status.name !== "Shared user" ? status.name : "signed in";
+  $("sessionChip").textContent = status.signed_in ? who : "locked";
   if (!status.setup || !status.signed_in) {
     renderGate(status);
     return;
