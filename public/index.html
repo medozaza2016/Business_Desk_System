@@ -216,13 +216,14 @@
       <section class="panel settings-pane" data-pane="access" hidden>
         <div class="card-head"><h2>Shared access</h2><span class="chip" id="passcodeChip">12h session</span></div>
         <div class="card-body">
+          <p class="rail-note lead" id="passcodeScope">One passcode for the whole desk: the same code unlocks every company and every person. It is stored once in <code>settings</code>, not per company.</p>
           <form id="passcodeForm" novalidate>
-            <label class="field"><span class="field-label">Current passcode</span><input id="pcCurrent" type="password" required autocomplete="current-password"></label>
-            <label class="field"><span class="field-label">New passcode <em>min 6 characters</em></span><input id="pcNext" type="password" required minlength="6" autocomplete="new-password"></label>
-            <label class="field"><span class="field-label">Repeat new passcode</span><input id="pcRepeat" type="password" required minlength="6" autocomplete="new-password"></label>
+            <label class="field"><span class="field-label">Current passcode</span><input id="pcCurrent" type="password" required maxlength="200" autocomplete="current-password"></label>
+            <label class="field"><span class="field-label">New passcode <em>6–200 characters</em></span><input id="pcNext" type="password" required minlength="6" maxlength="200" autocomplete="new-password"></label>
+            <label class="field"><span class="field-label">Confirm new passcode</span><input id="pcRepeat" type="password" required minlength="6" maxlength="200" autocomplete="new-password"></label>
             <div class="card-actions"><button class="btn primary" type="submit">Rotate passcode</button></div>
           </form>
-          <p class="rail-note">Rotating ends every other session immediately; this tab stays signed in.</p>
+          <p class="rail-note" id="passcodeNote">Rotating ends every other session immediately; this tab stays signed in.</p>
         </div>
       </section>
 

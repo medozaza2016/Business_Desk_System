@@ -286,6 +286,8 @@ const authStatus = async (request, env) => {
     signed_in: !!session,
     name: session?.name || null,
     session_hours: sessionHours(env),
+    /* the passcode is global (one settings row), so this timestamp is global too */
+    passcode_updated_at: auth?.updated_at || null,
   });
 };
 
@@ -343,10 +345,12 @@ const handleRotatePasscode = async (request, env, ctx, session) => {
   if (!safeEqual(candidate, auth.hash)) return json({ error: "invalid_current_passcode" }, 401);
   const salt = randomToken(16);
   const hash = await stretchPasscode(next, salt);
-  await writeAuth(env, { salt, hash, iterations: PBKDF2_ITERATIONS, updated_at: new Date().toISOString() });
+  const rotatedAt = new Date().toISOString();
+  /* one row for the whole desk — every company and every person shares this code */
+  await writeAuth(env, { salt, hash, iterations: PBKDF2_ITERATIONS, updated_at: rotatedAt });
   audit(env, ctx, session.name, "auth.passcode_rotated", "settings", "auth_passcode", {});
   const token = await signSession({ n: session.name, exp: sessionExpiry(env) }, await hmacKey(hash));
-  return json({ rotated: true }, 200, { "set-cookie": sessionCookie(token, request, env) });
+  return json({ rotated: true, rotated_at: rotatedAt }, 200, { "set-cookie": sessionCookie(token, request, env) });
 };
 
 /* ============================ companies ============================ */

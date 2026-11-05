@@ -350,12 +350,21 @@ async function submitQuote(event) {
 
 const plural = (count, one, many) => `${count} ${count === 1 ? one : many}`;
 
+/** The passcode is one global row, so this pane never depends on the active company. */
+function paintPasscodeChrome() {
+  const hours = state.status?.session_hours || 12;
+  $("passcodeChip").textContent = `${hours}h session`;
+  const stamp = state.status?.passcode_updated_at;
+  const rotated = stamp ? `Last rotated ${String(stamp).replace("T", " ").slice(0, 16)} UTC.` : "Not rotated since setup.";
+  $("passcodeNote").textContent = `Rotating ends every other session on every device immediately; this tab stays signed in. ${rotated}`;
+}
+
 function paintCompanySettings() {
   const company = activeCompany();
   $("navCompanySummary").textContent = plural(state.companies.length, "company", "companies");
   $("companyStateChip").textContent = company ? (company.active ? "active" : "inactive") : "no company";
   $("companyStateChip2").textContent = company ? `active: ${company.name}` : "no companies";
-  $("passcodeChip").textContent = `${state.status?.session_hours || 12}h session`;
+  paintPasscodeChrome();
   $("cName").value = company?.name || "";
   $("cLegal").value = company?.legal_name || "";
   $("cPhone").value = company?.phone || "";
@@ -711,12 +720,16 @@ async function rotatePasscode(event) {
   const current = $("pcCurrent").value;
   const next = $("pcNext").value;
   const repeat = $("pcRepeat").value;
-  if (next.length < 6) { toast("New passcode needs at least 6 characters.", "error"); return; }
-  if (next !== repeat) { toast("The new passcodes do not match.", "error"); return; }
+  if (!current) { toast("Enter the current passcode.", "error"); $("pcCurrent").focus(); return; }
+  if (next.length < 6) { toast("New passcode needs at least 6 characters.", "error"); $("pcNext").focus(); return; }
+  if (next !== repeat) { toast("The new passcodes do not match.", "error"); $("pcRepeat").focus(); return; }
+  if (next === current) { toast("Choose a passcode different from the current one.", "error"); $("pcNext").focus(); return; }
   try {
-    await api("/api/auth/passcode", { method: "POST", body: { current, next } });
+    const data = await api("/api/auth/passcode", { method: "POST", body: { current, next } });
     for (const id of ["pcCurrent", "pcNext", "pcRepeat"]) $(id).value = "";
-    toast("Passcode rotated. Other devices are signed out.");
+    state.status = { ...state.status, passcode_updated_at: data?.rotated_at || new Date().toISOString() };
+    paintPasscodeChrome();
+    toast("Passcode rotated for every company and every person. Other devices are signed out.");
   } catch (error) {
     toast(humanError(error), "error");
   }
