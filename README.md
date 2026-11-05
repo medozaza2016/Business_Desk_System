@@ -17,6 +17,8 @@ Live: <https://quote.ahmedmohamed.org>
 
 - Vehicle valuation entry with automatic numbering (`QA-2026-00001`, per company and per year) and a
   read-only number preview that never burns a serial.
+- Optional free-form comment per quotation (`{{comments}}`, ≤300 chars): typed on the entry rail, still
+  editable on the record page, and carried into the CSV export.
 - Company switcher in the header; every quotation is scoped to its company.
 - Per-company logo uploaded from the company profile and printed twice: as the header mark and as a
   faint watermark on the A4 sheet (`{{logo_url}}` / `{{logo_state}}`).

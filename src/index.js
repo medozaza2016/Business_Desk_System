@@ -14,6 +14,8 @@ const PBKDF2_ITERATIONS = 100000;
 const MIN_PASSCODE_LENGTH = 6;
 const MAX_PASSCODE_LENGTH = 200;
 const MAX_TEMPLATE_BYTES = 200000;
+/* The comment row on the A4 sheet is 12.5 mm tall, so the text is capped well below it. */
+const MAX_QUOTATION_COMMENTS = 300;
 const LETTERHEAD_URL = "/letterhead_background.png";
 const MAX_LOGO_BYTES = 512 * 1024;
 const LOGO_PREFIX = "logos/";
@@ -627,7 +629,10 @@ const handleTemplateActivate = async (env, ctx, session, templateId) => {
 };
 
 /** Sample vehicle used to proof a template before it goes live. */
-const PREVIEW_SAMPLE = { model: "AUDI A8", year: "2012", chassis: "WAUZZZ4H0DN000001", cents: 24850000 };
+const PREVIEW_SAMPLE = {
+  model: "AUDI A8", year: "2012", chassis: "WAUZZZ4H0DN000001", cents: 24850000,
+  comments: "One owner, full service history, 2 keys.",
+};
 
 const companyRow = async (env, companyId) =>
   env.DB.prepare(`SELECT ${COMPANY_COLUMNS} FROM companies WHERE id=?`).bind(companyId).first();
@@ -645,6 +650,7 @@ const renderTemplatePreview = async (env, company, html) => {
     model: PREVIEW_SAMPLE.model,
     year: PREVIEW_SAMPLE.year,
     chassis: PREVIEW_SAMPLE.chassis,
+    comments: PREVIEW_SAMPLE.comments,
     amount_cents: PREVIEW_SAMPLE.cents,
     amount_words: amountWordsFromCents(PREVIEW_SAMPLE.cents),
     company_name: company.name,
@@ -717,6 +723,12 @@ const decorate = (row) => ({
   quote_date_text: formatDateDMY(row.quote_date),
 });
 
+/**
+ * The comment row on the sheet is a single 12.5 mm line, so the note is stored as one line:
+ * newlines and runs of spaces collapse instead of silently breaking the printed layout.
+ */
+const commentsField = (value) => text(value, MAX_QUOTATION_COMMENTS).replace(/\s+/g, " ").trim();
+
 const handleQuotationList = async (env, url) => {
   const companyId = url.searchParams.get("company_id");
   if (!companyId) return json({ error: "company_id_required" }, 400);
@@ -774,6 +786,7 @@ const handleQuotationCreate = async (request, env, ctx, session) => {
   const model = text(body.model, 120);
   const year = text(body.year, 20);
   const chassis = text(body.chassis, 120);
+  const comments = commentsField(body.comments);
   if (!model || !year || !chassis) return json({ error: "model_year_and_chassis_required" }, 400);
   const cents = parseAmountToCents(body.amount);
   if (cents === null) return json({ error: "invalid_amount" }, 400);
@@ -808,9 +821,9 @@ const handleQuotationCreate = async (request, env, ctx, session) => {
   const id = crypto.randomUUID();
   try {
     await env.DB.prepare(
-      "INSERT INTO quotations(id,company_id,template_id,quote_number,quote_date,model,year,chassis," +
-      "amount_cents,amount_words,template_html_snapshot,company_snapshot_json) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)"
-    ).bind(id, company.id, template?.id || null, quoteNumber, date, model, year, chassis, cents, amountWords,
+      "INSERT INTO quotations(id,company_id,template_id,quote_number,quote_date,model,year,chassis,comments," +
+      "amount_cents,amount_words,template_html_snapshot,company_snapshot_json) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)"
+    ).bind(id, company.id, template?.id || null, quoteNumber, date, model, year, chassis, comments, cents, amountWords,
       template?.html || DEFAULT_TEMPLATE, JSON.stringify(snapshot)).run();
   } catch {
     return json({ error: "quotation_number_already_exists" }, 409);
@@ -820,7 +833,7 @@ const handleQuotationCreate = async (request, env, ctx, session) => {
   return json({
     quotation: {
       id, company_id: company.id, quote_number: quoteNumber, quote_date: date,
-      quote_date_text: formatDateDMY(date), model, year, chassis,
+      quote_date_text: formatDateDMY(date), model, year, chassis, comments,
       amount_cents: cents, amount: formatMoney(cents), amount_words: amountWords,
       currency: company.currency || "AED",
     },
@@ -828,7 +841,7 @@ const handleQuotationCreate = async (request, env, ctx, session) => {
 };
 
 const QUOTATION_COLUMNS =
-  "id,company_id,template_id,quote_number,quote_date,model,year,chassis,amount_cents,amount_words,company_snapshot_json,created_at,updated_at";
+  "id,company_id,template_id,quote_number,quote_date,model,year,chassis,comments,amount_cents,amount_words,company_snapshot_json,created_at,updated_at";
 
 const quotationById = (env, id) =>
   env.DB.prepare(`SELECT ${QUOTATION_COLUMNS} FROM quotations WHERE id=? AND deleted_at IS NULL`).bind(id).first();
@@ -864,6 +877,11 @@ const handleQuotationPatch = async (request, env, ctx, session, id) => {
       sets.push(`${field}=?`);
       values.push(body[field].trim().slice(0, field === "year" ? 20 : 120));
     }
+  }
+  /* unlike the vehicle fields, the comment may be cleared: an empty string removes the row's text */
+  if (typeof body.comments === "string") {
+    sets.push("comments=?");
+    values.push(commentsField(body.comments));
   }
   if (body.amount !== undefined) {
     const cents = parseAmountToCents(body.amount);
@@ -932,6 +950,8 @@ const buildPrintFields = (row) => {
     model: row.model,
     year: row.year,
     chassis: row.chassis,
+    /* the free-form note from the quotation itself; the Challenger sheet prints it in its fourth row */
+    comments: commentsField(row.comments || ""),
     currency: snapshot.currency || "AED",
     amount: formatMoney(row.amount_cents),
     amount_words: row.amount_words,
@@ -999,13 +1019,13 @@ const handleCsvExport = async (env, url) => {
   const company = await env.DB.prepare("SELECT name,currency FROM companies WHERE id=?").bind(companyId).first();
   if (!company) return json({ error: "company_not_found" }, 404);
   const rows = await env.DB.prepare(
-    "SELECT quote_number,quote_date,model,year,chassis,amount_cents,amount_words,created_at " +
+    "SELECT quote_number,quote_date,model,year,chassis,comments,amount_cents,amount_words,created_at " +
     "FROM quotations WHERE company_id=? AND deleted_at IS NULL ORDER BY quote_date DESC, created_at DESC"
   ).bind(companyId).all();
-  const lines = ["quotation,date,model,year,chassis,amount,currency,amount_words,created"];
+  const lines = ["quotation,date,model,year,chassis,comments,amount,currency,amount_words,created"];
   for (const row of rows.results || []) {
     lines.push([
-      row.quote_number, row.quote_date, row.model, row.year, row.chassis,
+      row.quote_number, row.quote_date, row.model, row.year, row.chassis, row.comments,
       (Number(row.amount_cents) / 100).toFixed(2), company.currency, row.amount_words, row.created_at,
     ].map(csvCell).join(","));
   }

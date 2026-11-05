@@ -80,6 +80,7 @@ function paint(quote) {
   $("fModel").value = quote.model;
   $("fYear").value = quote.year;
   $("fChassis").value = quote.chassis;
+  $("fComments").value = quote.comments || "";
   $("fCurrency").textContent = quote.currency || "AED";
   $("fAmount").value = quote.amount;
   $("fWords").value = quote.amount_words || "";
@@ -115,6 +116,7 @@ async function save(event) {
         model: $("fModel").value.trim(),
         year: $("fYear").value.trim(),
         chassis: $("fChassis").value.trim(),
+        comments: $("fComments").value.trim(),
         amount: $("fAmount").value.trim(),
       },
     });

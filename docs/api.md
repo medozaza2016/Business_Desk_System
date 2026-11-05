@@ -49,9 +49,9 @@ Passcode rules: 6–200 characters. `name` (optional, ≤60 chars) only tags the
 | `POST` | `/api/templates/:templateId/activate` | – | `{activated:id}` |
 | `GET` | `/api/quotations?company_id=&q=&limit=` | – | `{quotations:[…], total}` (`limit` ≤ 100) |
 | `GET` | `/api/quotations/next-number?company_id=&date=` | – | `{period, next_serial, quote_number, date}` — **peek only**, never advances the sequence |
-| `POST` | `/api/quotations` | `{company_id, model, year, chassis, amount, quote_date?, quote_number?}` | `201 {quotation}` |
+| `POST` | `/api/quotations` | `{company_id, model, year, chassis, amount, comments?, quote_date?, quote_number?}` | `201 {quotation}` |
 | `GET` | `/api/quotations/:id` | – | `{quotation:{…, amount, quote_date_text, currency, company}}` |
-| `PATCH` | `/api/quotations/:id` | `{quote_number?, quote_date?, model?, year?, chassis?, amount?}` | `{quotation}` (amount words regenerated) |
+| `PATCH` | `/api/quotations/:id` | `{quote_number?, quote_date?, model?, year?, chassis?, comments?, amount?}` | `{quotation}` (amount words regenerated) |
 | `DELETE` | `/api/quotations/:id` | – | `{cancelled:true}` (soft delete) |
 | `GET` | `/api/quotations/:id/print` | – | A4 HTML sheet. `?print=1` adds the autoprint script |
 | `GET` | `/api/export/quotations.csv?company_id=` | – | `text/csv` attachment |
@@ -83,7 +83,8 @@ curl -s -b jar.txt -o logo.png "$BASE/api/companies/$CID/logo?v=whatever"
 curl -s -b jar.txt -X DELETE "$BASE/api/companies/$CID/logo"
 ```
 
-Quotation fields: `model` ≤120, `year` ≤20, `chassis` ≤120, `amount` 0–99,999,999.99 (commas and
+Quotation fields: `model` ≤120, `year` ≤20, `chassis` ≤120, `comments` ≤300 (optional, may be cleared
+with `""`; newlines and repeated spaces collapse to one line), `amount` 0–99,999,999.99 (commas and
 decimals accepted), `quote_date` in `YYYY-MM-DD` (calendar-validated).
 
 Numbering: `quotation_prefix + YYYY + "-" + 5-digit serial`, allocated atomically per company and year

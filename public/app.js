@@ -342,6 +342,7 @@ async function submitQuote(event) {
     model: $("model").value.trim(),
     year: $("year").value.trim(),
     chassis: $("chassis").value.trim(),
+    comments: $("comments").value.trim(),
     amount: $("amount").value.trim(),
   };
   if (serial) payload.quote_number = (company.quotation_prefix || "QA-") + serial;
@@ -354,7 +355,7 @@ async function submitQuote(event) {
   try {
     const data = await api("/api/quotations", { method: "POST", body: payload });
     toast(`Saved ${data.quotation.quote_number}`);
-    for (const id of ["quoteNumber", "model", "year", "chassis", "amount"]) $(id).value = "";
+    for (const id of ["quoteNumber", "model", "year", "chassis", "comments", "amount"]) $(id).value = "";
     $("model").focus();
     await refreshNextNumber();
     await loadQuotes();
