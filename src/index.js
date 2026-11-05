@@ -1010,6 +1010,12 @@ async function route(request, env, ctx, url) {
 
   if (!KNOWN_RESOURCES.has(resource)) return json({ error: "not_found", path }, 404);
 
+  /* A logo is public brand artwork. The print previews run in sandboxed iframes with an
+     opaque origin, so a <img> request from them carries no SameSite cookie at all. */
+  if (resource === "companies" && id && action === "logo" && !child && method === "GET") {
+    return handleCompanyLogoGet(env, id);
+  }
+
   const session = await currentSession(request, env);
   if (!session) return json({ error: "unauthorized" }, 401);
 
@@ -1021,7 +1027,6 @@ async function route(request, env, ctx, url) {
     if (id && !action && method === "PATCH") return handleCompanyPatch(request, env, ctx, session, id);
     if (id && !action && method === "DELETE") return handleCompanyDeactivate(env, ctx, session, id);
     if (id && action === "logo" && !child) {
-      if (method === "GET") return handleCompanyLogoGet(env, id);
       if (method === "POST") return handleCompanyLogoUpload(request, env, ctx, session, id);
       if (method === "DELETE") return handleCompanyLogoDelete(env, ctx, session, id);
     }

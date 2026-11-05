@@ -27,6 +27,7 @@ Errors always look like `{ "error": "machine_readable_code" }` with a matching H
 | `POST` | `/api/setup` | `{passcode, name?}` | First run only: creates the passcode, seeds a starter company + template v1, signs in. `409 already_configured` afterwards |
 | `POST` | `/api/auth/login` | `{passcode, name?}` | `{signed_in, name}` + cookie. `401 invalid_passcode`, `429 too_many_attempts` |
 | `POST` | `/api/auth/logout` | – | `{signed_in:false}`, clears the cookie |
+| `GET` | `/api/companies/:id/logo` | – | Raw logo bytes with their stored `content-type`; `404 logo_not_found` when the company has none. Public because the print previews run in sandboxed iframes (see below) |
 
 Passcode rules: 6–200 characters. `name` (optional, ≤60 chars) only tags the audit trail.
 
@@ -39,7 +40,7 @@ Passcode rules: 6–200 characters. `name` (optional, ≤60 chars) only tags the
 | `POST` | `/api/companies` | `{name, legal_name?, phone?, email?, address?, quotation_prefix?, currency?}` | `201 {company}` (also creates template v1) |
 | `PATCH` | `/api/companies/:id` | any of the above plus `active` | `{company}` |
 | `DELETE` | `/api/companies/:id` | – | `{deactivated:true}` (soft, history is kept) |
-| `GET` | `/api/companies/:id/logo` | – | Raw logo bytes with their stored `content-type`; `404 logo_not_found` when the company has none |
+| `GET` | `/api/companies/:id/logo` | – | see the public routes above |
 | `POST` | `/api/companies/:id/logo` | `multipart/form-data`, field `file` | `201 {company, template_uses_logo}` — replaces any previous logo |
 | `DELETE` | `/api/companies/:id/logo` | – | `{removed, company}` — the sheet falls back to the template's built-in mark |
 | `GET` | `/api/companies/:id/templates` | – | `{templates:[{id,name,version,active,bytes,created_at}]}` |
@@ -64,7 +65,10 @@ only keeps `logo_key`; `logo_url` in company payloads is the ready-to-use path.
   type, so a mislabelled or renamed file is rejected (`415 unsupported_image_type`).
 - Maximum size **512 KB** (`413 logo_too_large`). SVG is deliberately refused — it is a document, not a
   raster image, and would be served from the same origin as the desk.
-- Uploading a new logo deletes the previous object. `GET` requires the session cookie and answers with
+- Uploading a new logo deletes the previous object. `GET` is the one **public** route: the print previews
+  render inside `sandbox`ed iframes whose opaque origin would drop the `SameSite=Lax` cookie, so a guarded
+  read would simply 401 and print a broken image. Only the image bytes are exposed (the company UUID is
+  unguessable, uploads and deletes stay authenticated), and the response carries
   `x-content-type-options: nosniff`, `content-disposition: inline` and
   `content-security-policy: default-src 'none'; sandbox`.
 - `template_uses_logo` is `false` when the live template never asks for `{{logo_url}}`, i.e. the file is

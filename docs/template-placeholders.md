@@ -73,8 +73,9 @@ returns `template_uses_logo: false` and the desk warns you. Add the block above 
 publish a new version. The Marshall Auctions template is an example of a company whose artwork lives
 entirely in its own SVG; it simply never references `{{logo_url}}`.
 
-The image is same-origin, which the print CSP already allows (`img-src 'self' data:`); uploaded SVGs are
-refused by the API, so a logo can never be a script-bearing document.
+The image is same-origin and public to read, so it renders even inside the sandboxed preview iframes
+(the print CSP already allows `img-src 'self' data:`); uploaded SVGs are refused by the API, so a logo can
+never be a script-bearing document.
 
 ## Default template
 
