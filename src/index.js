@@ -120,24 +120,24 @@ async function handleApi(request,env,url){
   }catch(e){return json({error:"quotation_number_already_exists_or_save_failed"},409);}
   return json({quotation:{id,quote_number:quoteNumber,quote_date:date,model:b.model.trim(),year:b.year.trim(),chassis:b.chassis.trim(),amount_cents:cents,amount_words:words}},201);
  }
- const printMatch=url.pathname.match(/^\\/api\\/quotations\\/([a-f0-9-]+)\\/print$/i);
- if(printMatch && request.method==="GET"){
-  const row=await env.DB.prepare("SELECT q.*,c.name AS current_company_name FROM quotations q JOIN companies c ON c.id=q.company_id WHERE q.id=? AND q.deleted_at IS NULL").bind(printMatch[1]).first();
+ const printPrefix="/api/quotations/",printSuffix="/print";
+ const printId=url.pathname.startsWith(printPrefix)&&url.pathname.endsWith(printSuffix)?url.pathname.slice(printPrefix.length,-printSuffix.length):null;
+ if(printId && request.method==="GET"){
+  const row=await env.DB.prepare("SELECT q.*,c.name AS current_company_name FROM quotations q JOIN companies c ON c.id=q.company_id WHERE q.id=? AND q.deleted_at IS NULL").bind(printId).first();
   if(!row)return json({error:"quotation_not_found"},404);
   let company={};try{company=JSON.parse(row.company_snapshot_json||"{}")}catch{}
   const fields={quote_number:row.quote_number,quote_date:row.quote_date,model:row.model,year:row.year,chassis:row.chassis,amount:(row.amount_cents/100).toFixed(2),amount_words:row.amount_words,currency:company.currency||"AED",company_name:company.legal_name||company.name||row.current_company_name,company_address:company.address||"",company_phone:company.phone||"",company_email:company.email||""};
   return new Response(renderQuote(row.template_html_snapshot||DEFAULT_TEMPLATE,fields),{headers:{"content-type":"text/html; charset=utf-8","cache-control":"no-store","content-security-policy":"default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; base-uri 'none'; form-action 'none'"}});
  }
- const detailMatch=url.pathname.match(/^\\/api\\/quotations\\/([a-f0-9-]+)$/i);
- if(detailMatch && request.method==="GET"){
-  const row=await env.DB.prepare("SELECT id,company_id,quote_number,quote_date,model,year,chassis,amount_cents,amount_words,created_at FROM quotations WHERE id=? AND deleted_at IS NULL").bind(detailMatch[1]).first();
+ const detailPrefix="/api/quotations/",detailId=url.pathname.startsWith(detailPrefix)?url.pathname.slice(detailPrefix.length):null;
+ if(detailId && !detailId.includes("/") && request.method==="GET"){
+  const row=await env.DB.prepare("SELECT id,company_id,quote_number,quote_date,model,year,chassis,amount_cents,amount_words,created_at FROM quotations WHERE id=? AND deleted_at IS NULL").bind(detailId).first();
   return row?json({quotation:row}):json({error:"quotation_not_found"},404);
  }
- if(detailMatch && request.method==="DELETE"){
-  await env.DB.prepare("UPDATE quotations SET deleted_at=CURRENT_TIMESTAMP WHERE id=? AND deleted_at IS NULL").bind(detailMatch[1]).run();
+ if(detailId && !detailId.includes("/") && request.method==="DELETE"){
+  await env.DB.prepare("UPDATE quotations SET deleted_at=CURRENT_TIMESTAMP WHERE id=? AND deleted_at IS NULL").bind(detailId).run();
   return json({deleted:true});
  }
-
  if(url.pathname==="/api/companies" && request.method==="DELETE"){
   const id=url.searchParams.get("id");if(!id)return json({error:"company_id_required"},400);
   await env.DB.prepare("UPDATE companies SET active=0,updated_at=CURRENT_TIMESTAMP WHERE id=?").bind(id).run();
