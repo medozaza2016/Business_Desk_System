@@ -647,7 +647,7 @@ th.money-head, td.money { text-align: right; }
 /* template studio — versions + editor on the left, proof sheet on the right */
 .studio {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(300px, 400px);
+  grid-template-columns: minmax(0, 1fr) minmax(340px, 470px);
   gap: 20px;
   align-items: start;
 }
@@ -884,7 +884,7 @@ hr.rule { border: 0; border-top: 1px dashed var(--line); margin: 16px 0; }
 /* ------------------------------------------------------------ responsive --- */
 
 @media (max-width: 1240px) {
-  .studio { grid-template-columns: minmax(0, 1fr) minmax(272px, 330px); }
+  .studio { grid-template-columns: minmax(0, 1fr) minmax(300px, 370px); }
 }
 
 @media (max-width: 1080px) {

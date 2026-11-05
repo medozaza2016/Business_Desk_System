@@ -343,11 +343,13 @@ async function submitQuote(event) {
 
 /* --------------------------------------------------------------- settings --- */
 
+const plural = (count, one, many) => `${count} ${count === 1 ? one : many}`;
+
 function paintCompanySettings() {
   const company = activeCompany();
-  $("companyCount").textContent = String(state.companies.length);
+  $("navCompanySummary").textContent = plural(state.companies.length, "company", "companies");
   $("companyStateChip").textContent = company ? (company.active ? "active" : "inactive") : "no company";
-  $("companyStateChip2").textContent = `${state.companies.length} total`;
+  $("companyStateChip2").textContent = company ? `active: ${company.name}` : "no companies";
   $("passcodeChip").textContent = `${state.status?.session_hours || 12}h session`;
   $("cName").value = company?.name || "";
   $("cLegal").value = company?.legal_name || "";
@@ -545,7 +547,7 @@ async function loadTemplates(selectId) {
   const company = activeCompany();
   $("templateList").textContent = "";
   if (!company) {
-    $("navTemplateCount").textContent = "0";
+    $("navTemplateSummary").textContent = "0 versions";
     $("templateChip").textContent = "no company";
     $("templateMeta").textContent = "no company selected";
     return;
@@ -560,7 +562,7 @@ async function loadTemplates(selectId) {
   const live = state.templates.find((t) => t.active);
   $("templateChip").textContent = live ? `v${live.version} live` : "no live version";
   $("templateMeta").textContent = live ? `live v${live.version}` : "no live version";
-  $("navTemplateCount").textContent = String(state.templates.length);
+  $("navTemplateSummary").textContent = plural(state.templates.length, "version", "versions");
   renderVersionList();
   const target = selectId
     || (state.templates.some((t) => t.id === state.templateEditId) ? state.templateEditId : null)
@@ -744,7 +746,7 @@ function showView(name) {
 
 async function openSettings(pane) {
   showView("settings");
-  showSettingsPane(pane || new URLSearchParams(location.search).get("pane") || "company");
+  showSettingsPane(pane || new URLSearchParams(location.search).get("pane") || state.settingsPane || "company");
   await loadTemplates();
 }
 
