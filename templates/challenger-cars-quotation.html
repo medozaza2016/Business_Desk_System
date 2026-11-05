@@ -1,0 +1,656 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="light">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Kufi+Arabic:wght@500;600;700;800;900&family=Noto+Naskh+Arabic:wght@500;600;700;800;900&display=swap" rel="stylesheet">
+<title>Challenger Cars Quotation {{quote_number}}</title>
+<style>
+  @page { size: A4 portrait; margin: 0; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; width: 210mm; min-height: 297mm; }
+  body {
+    color: #111;
+    background: #e8eaed;
+    font-family: Arial, "Segoe UI", Tahoma, "DejaVu Sans", sans-serif;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  .sheet {
+    position: relative;
+    width: 210mm;
+    height: 297mm;
+    margin: 0 auto;
+    overflow: hidden;
+    background: #fff;
+  }
+
+  /* Brand artwork recreated as HTML and inline SVG, so no external letterhead
+     image or remote asset is required. */
+  .brand-header {
+    position: absolute;
+    inset: 0 0 auto;
+    height: 53mm;
+    text-align: center;
+  }
+  /* The uploaded company logo takes over as soon as one exists: logo_state
+     renders "has-logo" or "no-logo", so the built-in winged-C below stays as
+     the fallback mark without any scripting. */
+  .brand-logo {
+    position: absolute;
+    top: 0mm;
+    left: 50%;
+    width: 66mm;
+    height: 29mm;
+    transform: translateX(-50%);
+  }
+  .brand-logo img {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+  }
+  .brand-logo.has-logo .logo-builtin { display: none; }
+  .brand-logo.no-logo .logo-upload { display: none; }
+  .brand-ar {
+    position: absolute;
+    top: 31mm;
+    left: 8mm;
+    right: 8mm;
+    direction: rtl;
+    font-size: 7mm;
+    line-height: 1.1;
+    font-weight: 900;
+    white-space: nowrap;
+  }
+  .brand-ar .accent, .brand-en .accent { color: #c51e25; }
+  .brand-en {
+    position: absolute;
+    top: 41.2mm;
+    left: 6mm;
+    right: 6mm;
+    font-size: 8.3mm;
+    line-height: 1;
+    font-weight: 900;
+    letter-spacing: .12mm;
+    white-space: nowrap;
+  }
+
+  .titlebar {
+    position: absolute;
+    left: 22.315mm;
+    top: 54.592mm;
+    width: 159.791mm;
+    height: 14.345mm;
+    border-radius: 8.368mm;
+    background: #e9e9e9;
+    display: grid;
+    grid-template-columns: 1fr 1.594mm 1fr;
+    align-items: center;
+    text-align: center;
+    padding: 0 6.973mm;
+  }
+  .title-en { font-size: 8.368mm; font-weight: 900; }
+  .title-divider {
+    width: 1.594mm;
+    height: 10.759mm;
+    background: #c51e25;
+    justify-self: center;
+  }
+  .title-ar {
+    direction: rtl;
+    font-size: 7.35mm;
+    font-weight: 900;
+    white-space: nowrap;
+  }
+
+  .meta {
+    position: absolute;
+    top: 73.321mm;
+    left: 11.954mm;
+    width: 180.114mm;
+    display: grid;
+    grid-template-columns: 85.275mm 73.719mm;
+    gap: 21.120mm;
+  }
+  .meta-box {
+    height: 9.962mm;
+    border: .398mm solid #c51e25;
+    border-radius: 2.989mm;
+    background: #fff;
+    display: flex;
+    align-items: center;
+    padding: 0 5.180mm;
+    white-space: nowrap;
+  }
+  .meta-label { font-size: 4.981mm; font-weight: 800; }
+  .meta-value {
+    margin-left: 2.2mm;
+    color: #c51e25;
+    font-size: 5.15mm;
+    font-weight: 900;
+  }
+  .meta-date { color: #111; text-align: center; flex: 1; }
+  .meta-box:first-child { padding-left: 3.5mm; padding-right: 3.5mm; }
+  .meta-box:first-child .meta-label,
+  .meta-box:first-child .meta-value {
+    font-size: 4.55mm;
+  }
+  .meta-box:first-child .meta-value { margin-left: 1.4mm; }
+  .intro {
+    position: absolute;
+    top: 85.474mm;
+    left: 19.924mm;
+    width: 170.152mm;
+    text-align: center;
+  }
+  .intro-en { font-size: 4.55mm; line-height: 1.23; font-weight: 650; }
+  .intro-ar {
+    margin-top: 1.594mm;
+    direction: rtl;
+    font-size: 4.75mm;
+    line-height: 1.25;
+    font-weight: 800;
+    white-space: nowrap;
+  }
+
+  .vehicle {
+    position: absolute;
+    left: 11.755mm;
+    top: 107.192mm;
+    width: 180.712mm;
+    height: 32.3mm;
+    border: .398mm solid #c51e25;
+    border-radius: 3.387mm;
+    overflow: hidden;
+    background: #fff;
+  }
+  .vrow {
+    display: grid;
+    grid-template-columns: 42.239mm 1fr 42.837mm;
+    height: 10.2mm;
+  }
+  .vrow + .vrow { border-top: .398mm solid #c51e25; }
+  .vlabel {
+    display: flex;
+    align-items: center;
+    padding: 0 2.8mm;
+    border-right: .398mm solid #c51e25;
+    background: #f3f0e9;
+    font-size: 5mm;
+    font-weight: 800;
+    white-space: nowrap;
+  }
+  .vvalue {
+    display: flex;
+    align-items: center;
+    min-width: 0;
+    padding: 0 5.579mm;
+    background: #fff;
+    font-size: 5.3mm;
+    font-weight: 800;
+    overflow-wrap: anywhere;
+  }
+  .var {
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    padding: 0 1.8mm;
+    border-left: .398mm solid #c51e25;
+    background: #f3f0e9;
+    direction: rtl;
+    font-size: 3.65mm;
+    font-weight: 800;
+    white-space: nowrap;
+  }
+
+  .estimated {
+    position: absolute;
+    left: 11.556mm;
+    top: 146.044mm;
+    width: 181.110mm;
+    height: 13.548mm;
+    border: .398mm solid #c51e25;
+    border-radius: 3.786mm;
+    display: grid;
+    grid-template-columns: 1fr 65.750mm 1fr;
+    align-items: center;
+    padding: 0 5.778mm;
+    background: #fff;
+  }
+  .est-en, .est-ar {
+    font-size: 5.35mm;
+    font-weight: 900;
+    white-space: nowrap;
+  }
+  .est-ar { text-align: right; direction: rtl; }
+  .amount {
+    height: 12.751mm;
+    border-radius: 5.579mm;
+    background: #c51e25;
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 7.15mm;
+    font-weight: 900;
+    letter-spacing: .1mm;
+    white-space: nowrap;
+  }
+
+  .statement {
+    position: absolute;
+    left: 8.567mm;
+    top: 164.175mm;
+    width: 186.888mm;
+    height: 38.852mm;
+    border-radius: 7.571mm;
+    background: #f5f4f0;
+    padding: 2.391mm 8.966mm;
+  }
+  .statement-ar {
+    position: absolute;
+    left: 9.564mm;
+    right: 9.564mm;
+    top: 1.992mm;
+    height: 15.740mm;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    text-align: center;
+    direction: rtl;
+    font-size: 3.8mm;
+    line-height: 1.25;
+    font-weight: 900;
+  }
+  .statement-ar > div { width: 100%; text-align: center; white-space: nowrap; }
+  .statement-line {
+    position: absolute;
+    left: 8.966mm;
+    right: 8.966mm;
+    top: 20.123mm;
+    height: .598mm;
+    background: #c51e25;
+  }
+  .statement-en {
+    position: absolute;
+    left: 7.571mm;
+    right: 7.571mm;
+    top: 22mm;
+    height: 15mm;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    font-size: 3.15mm;
+    line-height: 1.15;
+    font-weight: 800;
+  }
+  .amount-words { text-transform: capitalize; }
+
+  .footer {
+    position: absolute;
+    left: 0;
+    top: 205mm;
+    width: 210mm;
+    height: 92mm;
+    background: #fff;
+  }
+  /* Faint brand watermark: the uploaded company logo at 10% opacity. It sits in
+     the free band between the signature row (ends at 48.7mm) and the contact
+     block (starts at 68mm), because this sheet moved both notes to the top of
+     the footer. Nothing is drawn while the company has no logo: the token
+     resolves to a transparent 1x1 pixel. */
+  .watermark {
+    position: absolute;
+    top: 50mm;
+    left: 50%;
+    width: 56mm;
+    height: 16mm;
+    transform: translateX(-50%);
+    pointer-events: none;
+  }
+  .watermark img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    opacity: .1;
+  }
+  .note-en {
+    position: absolute;
+    left: 12.5mm;
+    top: 28mm;
+    width: 86mm;
+    font-size: 3.45mm;
+    line-height: 1.18;
+    font-weight: 700;
+  }
+  .note-title { color: #c51e25; font-size: 5.6mm; font-weight: 900; margin-bottom: 1mm; }
+  .note-en p { margin: 0; }
+  .note-ar {
+    position: absolute;
+    right: 12.5mm;
+    top: 35mm;
+    width: 86mm;
+    direction: rtl;
+    text-align: right;
+    font-size: 3.55mm;
+    line-height: 1.25;
+    font-weight: 800;
+  }
+  .footer-rule {
+    position: absolute;
+    left: 7.5mm;
+    right: 7.5mm;
+    top: 52mm;
+    height: .55mm;
+    background: #c51e25;
+  }
+  .signature-row {
+    position: absolute;
+    top: 58mm;
+    left: 22.8mm;
+    width: 164.4mm;
+    display: grid;
+    grid-template-columns: 75mm 75mm;
+    justify-content: space-between;
+  }
+  .sign-box {
+    height: 18.7mm;
+    border: .45mm solid #222;
+    border-radius: 3mm;
+    background: rgba(255,255,255,.84);
+    text-align: center;
+    padding: 1mm 2mm;
+    font-size: 3.8mm;
+    font-weight: 800;
+  }
+  .sign-line { margin-top: 6.1mm; letter-spacing: .7mm; font-size: 3.2mm; }
+  .contact {
+    position: absolute;
+    top: 75mm;
+    left: 8mm;
+    right: 8mm;
+    text-align: center;
+    font-size: 4.7mm;
+    line-height: 1.24;
+    font-weight: 800;
+  }
+  .contact .email { color: #c51e25; }
+  .contact .address { font-size: 4.05mm; }
+  .bottom-stripe {
+    position: absolute;
+    left: 6mm;
+    right: 6mm;
+    bottom: 1.2mm;
+    height: 3.8mm;
+    background: linear-gradient(90deg,#111 0 50%,#c51e25 50% 100%);
+  }
+
+  @media screen { .sheet { box-shadow: 0 4px 22px #0002; } }
+  @media print {
+    html, body { width: 210mm; height: 297mm; margin: 0; padding: 0; background: #fff; }
+    .sheet { margin: 0; box-shadow: none; page-break-after: avoid; break-after: avoid; }
+  }
+
+  /* Arabic typography refinement */
+  :root {
+    --arabic-display: "Noto Kufi Arabic", "Tahoma", "Arial", sans-serif;
+    --arabic-reading: "Noto Naskh Arabic", "Tahoma", "Arial", sans-serif;
+  }
+  .brand-ar,
+  .title-ar,
+  .var,
+  .est-ar,
+  .meta-box [dir="rtl"] {
+    font-family: var(--arabic-display);
+    font-weight: 800;
+    letter-spacing: 0;
+    text-rendering: optimizeLegibility;
+    font-kerning: normal;
+  }
+  .brand-ar {
+    font-size: 6.8mm;
+    line-height: 1.35;
+    top: 30.4mm;
+  }
+  .title-ar {
+    font-size: 6.9mm;
+    line-height: 1.45;
+    transform: translateY(-.3mm);
+  }
+  .intro-ar,
+  .statement-ar,
+  .note-ar {
+    font-family: var(--arabic-reading);
+    font-weight: 700;
+    text-rendering: optimizeLegibility;
+    font-kerning: normal;
+  }
+  .intro-ar {
+    font-size: 4.9mm;
+    line-height: 1.55;
+    margin-top: 1.2mm;
+  }
+  .var {
+    font-size: 3.55mm;
+    line-height: 1.5;
+    justify-content: center;
+    padding: 0 1.4mm;
+  }
+  .est-ar {
+    font-size: 5.15mm;
+    line-height: 1.5;
+  }
+  .statement-ar {
+    font-size: 4.05mm;
+    line-height: 1.65;
+    font-weight: 800;
+  }
+  .statement-ar > div {
+    white-space: normal;
+    line-height: 1.6;
+  }
+  .note-ar {
+    font-size: 3.9mm;
+    line-height: 1.65;
+    font-weight: 700;
+  }
+  .sign-box {
+    font-family: var(--arabic-display);
+    line-height: 1.5;
+  }
+  /* Stronger, cleaner section headers */
+  .titlebar {
+    background: linear-gradient(180deg, #f1f1f1 0%, #e6e6e6 100%);
+    border: .25mm solid #dedede;
+  }
+  .title-en {
+    letter-spacing: .15mm;
+  }
+  .meta-label,
+  .vlabel,
+  .est-en,
+  .note-title {
+    letter-spacing: .05mm;
+  }
+  @media print {
+    /* Fonts are loaded from Google Fonts when online; local fallbacks remain available. */
+    .brand-ar, .title-ar, .var, .est-ar, .intro-ar,
+    .statement-ar, .note-ar, .sign-box {
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+  }
+
+
+  /* Final A4 spacing adjustment */
+  .titlebar { top: 52.6mm; }
+  .meta { top: 71.3mm; }
+  .intro { top: 83.5mm; }
+  .vehicle { top: 105.2mm; }
+  .estimated { top: 144.0mm; }
+  .statement { top: 162.2mm; }
+
+  /* Notes and footer content are repositioned to prevent overlap and clipping. */
+  .note-en { top: 3mm; line-height: 1.2; }
+  .note-ar { top: 5mm; line-height: 1.65; }
+  .footer-rule { top: 24mm; }
+  .signature-row { top: 30mm; }
+  .contact { top: 68mm; }
+
+
+  /* Align English and Arabic note sections on one shared top baseline. */
+  .note-en,
+  .note-ar {
+    top: 3mm;
+    width: 86mm;
+    height: 19mm;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start;
+  }
+  .note-en {
+    left: 12.5mm;
+    text-align: left;
+  }
+  .note-ar {
+    right: 12.5mm;
+    left: auto;
+    text-align: right;
+    direction: rtl;
+  }
+  .note-en .note-title,
+  .note-ar .note-title {
+    margin: 0 0 1mm;
+    line-height: 1.15;
+  }
+  .note-en p,
+  .note-ar p {
+    margin: 0;
+    font-size: 3.45mm;
+    line-height: 1.25;
+    font-weight: 700;
+  }
+  .note-ar p {
+    font-family: var(--arabic-reading);
+    font-size: 3.9mm;
+    line-height: 1.5;
+  }
+
+</style>
+</head>
+<body>
+<main class="sheet" aria-label="Challenger Cars vehicle valuation quotation">
+  <header class="brand-header">
+    <div class="brand-logo {{logo_state}}">
+      <img class="logo-builtin" src="data:image/webp;base64,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" alt="Challenger Cars winged C logo">
+      <img class="logo-upload" src="{{logo_url}}" alt="">
+    </div>
+    <div class="brand-ar"><span class="accent">شالنجر</span> للسيارات المستعملة ذ.م.م.</div>
+    <div class="brand-en"><span class="accent">CHALLENGER</span> USED CARS EXHB. LLC</div>
+  </header>
+
+  <section class="titlebar" aria-label="Quotation title">
+    <div class="title-en">QUOTATION</div>
+    <div class="title-divider"></div>
+    <div class="title-ar">عرض سعر / تقييم</div>
+  </section>
+
+  <section class="meta" aria-label="Quotation reference and date">
+    <div class="meta-box">
+      <span class="meta-label">Quotation No.:</span>
+      <span class="meta-value">{{quote_number}}</span>
+    </div>
+    <div class="meta-box">
+      <span class="meta-label">Date:</span>
+      <span class="meta-value meta-date" data-format-date>{{quote_date}}</span>
+    </div>
+  </section>
+
+  <section class="intro">
+    <div class="intro-en">This is a preliminary valuation for the below mentioned vehicle<br>based on the current market value.</div>
+    <div class="intro-ar">وهو تقييم مبدئي للسيارة المذكورة أدناه بناءً على القيمة الحالية في السوق.</div>
+  </section>
+
+  <section class="vehicle" aria-label="Vehicle details">
+    <div class="vrow">
+      <div class="vlabel">Model:</div>
+      <div class="vvalue">{{model}}</div>
+      <div class="var">الموديل:</div>
+    </div>
+    <div class="vrow">
+      <div class="vlabel">Year:</div>
+      <div class="vvalue">{{year}}</div>
+      <div class="var">سنة الصنع:</div>
+    </div>
+    <div class="vrow">
+      <div class="vlabel">Chassis No.:</div>
+      <div class="vvalue">{{chassis}}</div>
+      <div class="var">رقم الشاسيه:</div>
+    </div>
+  </section>
+
+  <section class="estimated" aria-label="Estimated vehicle value">
+    <div class="est-en">Estimated Value:</div>
+    <div class="amount">{{currency}} {{amount}}</div>
+    <div class="est-ar">القيمة التقديرية:</div>
+  </section>
+
+  <section class="statement" aria-label="Estimated market value statement">
+    <div class="statement-ar">
+      <div>تُقدّر القيمة السوقية للسيارة، في حال كانت بحالة جيدة،</div>
+      <div>بتاريخ {{quote_date}} بمبلغ وقدره {{amount}} درهم إماراتي فقط.</div>
+    </div>
+    <div class="statement-line"></div>
+    <div class="statement-en">
+      <div>The estimated market value of the vehicle, assuming it is in good condition,</div>
+      <div>as of <span data-format-date>{{quote_date}}</span>, is {{currency}} {{amount}}</div>
+      <div>(<span class="amount-words">{{amount_words}}</span> UAE Dirhams Only).</div>
+    </div>
+  </section>
+
+  <footer class="footer">
+    <!-- Faint brand watermark: the uploaded company logo. Nothing shows while the
+         company has no logo, because the token resolves to a transparent pixel. -->
+    <div class="watermark"><img src="{{logo_url}}" alt=""></div>
+
+    <div class="note-en">
+      <div class="note-title">Note:</div>
+      <p>• This is an approximate valuation and may vary depending on the vehicle's actual condition and market changes.</p>
+    </div>
+    <div class="note-ar">
+      <div class="note-title">ملاحظة:</div>
+      <p>هذا تقييم تقريبي وقد يختلف حسب الحالة الفعلية للسيارة وتغيرات السوق.</p>
+    </div>
+    <div class="footer-rule"></div>
+
+    <div class="signature-row">
+      <div class="sign-box">
+        Signature / التوقيع
+        <div class="sign-line">........................................</div>
+      </div>
+      <div class="sign-box">Stamp / الختم</div>
+    </div>
+
+    <div class="contact">
+      <div>Mobile: {{company_phone}}</div>
+      <div class="email">E-mail: {{company_email}}</div>
+      <div class="address">{{company_address}}</div>
+    </div>
+    <div class="bottom-stripe"></div>
+  </footer>
+</main>
+
+
+</body>
+</html>
+

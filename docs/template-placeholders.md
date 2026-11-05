@@ -73,6 +73,12 @@ returns `template_uses_logo: false` and the desk warns you. Add the block above 
 publish a new version. The Marshall Auctions template is an example of a company whose artwork lives
 entirely in its own SVG; it simply never references `{{logo_url}}`.
 
+`templates/challenger-cars-quotation.html` is the Challenger Cars A4 sheet with the slot wired in — a
+worked example of converting an existing template. It keeps the built-in winged-C as the `no-logo`
+fallback for the header mark and prints the upload as a 10 %-opacity watermark in the free band of its
+footer (between the signature row and the contact block). It is a reference copy only: it is not imported
+or seeded, so it is never bundled into the worker.
+
 The image is same-origin and public to read, so it renders even inside the sandboxed preview iframes
 (the print CSP already allows `img-src 'self' data:`); uploaded SVGs are refused by the API, so a logo can
 never be a script-bearing document.
