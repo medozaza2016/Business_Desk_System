@@ -10,7 +10,7 @@ Live: <https://quote.ahmedmohamed.org>
 - **Cloudflare Workers** — API, print rendering, all routing
 - **Workers Assets** (`./public`) — the desk UI, no framework, no build step
 - **D1** — `companies`, `templates`, `quote_sequences`, `quotations`, `settings`, `audit_events`
-- **R2** — reserved for per-company logos and letterheads
+- **R2** (`ASSETS`) — per-company logo uploads (`logos/…`), validated PNG/JPEG/WebP, ≤ 512 KB
 - Authentication: one shared passcode, PBKDF2-SHA256 (100,000 iterations), stateless HMAC session cookie
 
 ## Features
@@ -18,6 +18,8 @@ Live: <https://quote.ahmedmohamed.org>
 - Vehicle valuation entry with automatic numbering (`QA-2026-00001`, per company and per year) and a
   read-only number preview that never burns a serial.
 - Company switcher in the header; every quotation is scoped to its company.
+- Per-company logo uploaded from the company profile and printed twice: as the header mark and as a
+  faint watermark on the A4 sheet (`{{logo_url}}` / `{{logo_state}}`).
 - Bilingual A4 print sheet positioned in millimetres over a letterhead background, printed by the
   browser (Save as PDF) — no PDF service, no stored binaries.
 - Versioned HTML templates per company; the issued sheet is a snapshot, so later edits never rewrite
@@ -75,5 +77,8 @@ docs/                             API, templates, operations, PRD
 ## Notes
 
 - `public/letterhead_background.png` is a white placeholder until the real artwork is supplied.
+- A company logo only prints where its template asks for `{{logo_url}}`; templates published before the
+  logo feature must add that block (see `docs/template-placeholders.md`). The desk warns you when the
+  live template has no slot for the upload.
 - Amount in words is generated in English; the Arabic sentence on the sheet carries the figure.
 - Do not expose D1 or R2 credentials to the client; every query is scoped server-side.

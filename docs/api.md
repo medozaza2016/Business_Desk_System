@@ -39,6 +39,9 @@ Passcode rules: 6–200 characters. `name` (optional, ≤60 chars) only tags the
 | `POST` | `/api/companies` | `{name, legal_name?, phone?, email?, address?, quotation_prefix?, currency?}` | `201 {company}` (also creates template v1) |
 | `PATCH` | `/api/companies/:id` | any of the above plus `active` | `{company}` |
 | `DELETE` | `/api/companies/:id` | – | `{deactivated:true}` (soft, history is kept) |
+| `GET` | `/api/companies/:id/logo` | – | Raw logo bytes with their stored `content-type`; `404 logo_not_found` when the company has none |
+| `POST` | `/api/companies/:id/logo` | `multipart/form-data`, field `file` | `201 {company, template_uses_logo}` — replaces any previous logo |
+| `DELETE` | `/api/companies/:id/logo` | – | `{removed, company}` — the sheet falls back to the template's built-in mark |
 | `GET` | `/api/companies/:id/templates` | – | `{templates:[{id,name,version,active,bytes,created_at}]}` |
 | `POST` | `/api/companies/:id/templates` | `{html, name?, activate?}` | `201 {template}` — always a new version |
 | `GET` | `/api/companies/:id/templates/:templateId` | – | `{template:{…,html}}` |
@@ -51,6 +54,30 @@ Passcode rules: 6–200 characters. `name` (optional, ≤60 chars) only tags the
 | `DELETE` | `/api/quotations/:id` | – | `{cancelled:true}` (soft delete) |
 | `GET` | `/api/quotations/:id/print` | – | A4 HTML sheet. `?print=1` adds the autoprint script |
 | `GET` | `/api/export/quotations.csv?company_id=` | – | `text/csv` attachment |
+
+### Company logo
+
+The logo is stored in R2 (`ASSETS` binding, key `logos/<companyId>-<random>.<ext>`) and the company row
+only keeps `logo_key`; `logo_url` in company payloads is the ready-to-use path.
+
+- Accepted formats: **PNG, JPEG, WebP**. The Worker checks the file signature as well as the declared
+  type, so a mislabelled or renamed file is rejected (`415 unsupported_image_type`).
+- Maximum size **512 KB** (`413 logo_too_large`). SVG is deliberately refused — it is a document, not a
+  raster image, and would be served from the same origin as the desk.
+- Uploading a new logo deletes the previous object. `GET` requires the session cookie and answers with
+  `x-content-type-options: nosniff`, `content-disposition: inline` and
+  `content-security-policy: default-src 'none'; sandbox`.
+- `template_uses_logo` is `false` when the live template never asks for `{{logo_url}}`, i.e. the file is
+  stored but cannot appear on the sheet until the template is updated (see
+  [`template-placeholders.md`](template-placeholders.md#company-logo-and-watermark)).
+- The printed sheet resolves the logo from the **live company profile** (like the letterhead), so a
+  replaced or removed logo can never leave a broken image on a reprint.
+
+```bash
+curl -s -b jar.txt -F "file=@logo.png;type=image/png" "$BASE/api/companies/$CID/logo"
+curl -s -b jar.txt -o logo.png "$BASE/api/companies/$CID/logo?v=whatever"
+curl -s -b jar.txt -X DELETE "$BASE/api/companies/$CID/logo"
+```
 
 Quotation fields: `model` ≤120, `year` ≤20, `chassis` ≤120, `amount` 0–99,999,999.99 (commas and
 decimals accepted), `quote_date` in `YYYY-MM-DD` (calendar-validated).

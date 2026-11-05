@@ -781,6 +781,69 @@ th.money-head, td.money { text-align: right; }
 
 .card-body { padding: 18px; }
 
+/* ------------------------------------------------------------ brand logo --- */
+
+.logo-field {
+  display: grid;
+  grid-template-columns: 132px 1fr;
+  gap: 16px;
+  margin-bottom: 18px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--paper-deep);
+}
+
+.logo-preview {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 76px;
+  padding: 7px;
+  border: 1px dashed var(--line);
+  border-radius: var(--radius);
+  background: var(--sheet);
+  overflow: hidden;
+}
+
+.logo-preview img { max-width: 100%; max-height: 100%; object-fit: contain; }
+
+.logo-empty {
+  font-family: var(--mono);
+  font-size: 9.5px;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.logo-copy { min-width: 0; }
+
+.logo-hint {
+  margin: 0 0 10px;
+  color: var(--muted);
+  font-size: 11.5px;
+  line-height: 1.5;
+}
+
+.logo-hint code {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  padding: 1px 4px;
+  border-radius: 2px;
+  background: var(--sheet);
+  color: var(--ink-soft);
+}
+
+.logo-buttons { display: flex; flex-wrap: wrap; gap: 8px; }
+
+.logo-status {
+  margin: 10px 0 0;
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: .04em;
+  color: var(--ink-soft);
+}
+
 .card-actions {
   display: flex;
   gap: 8px;
@@ -945,6 +1008,7 @@ hr.rule { border: 0; border-top: 1px dashed var(--line); margin: 16px 0; }
   .record-head { flex-direction: column; align-items: flex-start; }
   .search input { width: 100%; }
   .ledger-actions { width: 100%; }
+  .logo-field { grid-template-columns: 1fr; }
 }
 
 /* ------------------------------------------------------------ animations --- */

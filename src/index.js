@@ -15,6 +15,21 @@ const MIN_PASSCODE_LENGTH = 6;
 const MAX_PASSCODE_LENGTH = 200;
 const MAX_TEMPLATE_BYTES = 200000;
 const LETTERHEAD_URL = "/letterhead_background.png";
+const MAX_LOGO_BYTES = 512 * 1024;
+const LOGO_PREFIX = "logos/";
+/* A template may print {{logo_url}} even when the company has no logo. Pointing at a
+   1x1 transparent GIF keeps the sheet clean instead of showing a broken-image icon. */
+const TRANSPARENT_PIXEL = "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
+/** Accepted logo formats — the declared type must also match the file signature. */
+const LOGO_TYPES = [
+  { mime: "image/png", ext: "png", test: (b) => b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47 },
+  { mime: "image/jpeg", ext: "jpg", test: (b) => b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff },
+  {
+    mime: "image/webp", ext: "webp",
+    test: (b) => b[0] === 0x52 && b[1] === 0x49 && b[2] === 0x46 && b[3] === 0x46 &&
+      b[8] === 0x57 && b[9] === 0x45 && b[10] === 0x42 && b[11] === 0x50,
+  },
+];
 const AUTOPRINT_SCRIPT = 'window.addEventListener("load",function(){setTimeout(function(){window.print()},400)});';
 
 const enc = new TextEncoder();
@@ -358,6 +373,20 @@ const handleRotatePasscode = async (request, env, ctx, session) => {
 const COMPANY_COLUMNS =
   "id,name,slug,legal_name,phone,email,address,quotation_prefix,currency,logo_key,letterhead_key,font_name,active,created_at";
 
+/**
+ * Public path of a company's uploaded logo, or null when it has none.
+ * The version query only busts caches after a re-upload; the Worker always serves
+ * the logo currently referenced by companies.logo_key.
+ */
+const logoUrlFor = (company) => {
+  if (!company || !company.logo_key) return null;
+  const version = String(company.logo_key).split("/").pop();
+  return `/api/companies/${company.id}/logo?v=${encodeURIComponent(version)}`;
+};
+
+/** Company rows leave the Worker with a ready-to-use logo URL. */
+const withLogoUrl = (row) => (row ? { ...row, logo_url: logoUrlFor(row) } : row);
+
 /** Seeds "Challenger Cars" (with an active template) when no company exists yet. */
 const seedCompany = async (env) => {
   const count = await env.DB.prepare("SELECT COUNT(*) AS n FROM companies").first();
@@ -373,7 +402,7 @@ const seedCompany = async (env) => {
 
 const handleCompanyList = async (env) => {
   const rows = await env.DB.prepare(`SELECT ${COMPANY_COLUMNS} FROM companies ORDER BY active DESC, name`).all();
-  return json({ companies: rows.results || [] });
+  return json({ companies: (rows.results || []).map(withLogoUrl) });
 };
 
 const text = (value, max) => (typeof value === "string" ? value.trim().slice(0, max) : "");
@@ -404,7 +433,7 @@ const handleCompanyCreate = async (request, env, ctx, session) => {
     .bind(crypto.randomUUID(), id, "Default A4 quotation", DEFAULT_TEMPLATE).run();
   audit(env, ctx, session.name, "company.created", "company", id, { name, slug });
   const row = await env.DB.prepare(`SELECT ${COMPANY_COLUMNS} FROM companies WHERE id=?`).bind(id).first();
-  return json({ company: row }, 201);
+  return json({ company: withLogoUrl(row) }, 201);
 };
 
 /** @type {[string, number][]} */
@@ -437,7 +466,7 @@ const handleCompanyPatch = async (request, env, ctx, session, companyId) => {
     .bind(...values, companyId).run();
   audit(env, ctx, session.name, "company.updated", "company", companyId, { fields: sets.map((s) => s.replace("=?", "")) });
   const row = await env.DB.prepare(`SELECT ${COMPANY_COLUMNS} FROM companies WHERE id=?`).bind(companyId).first();
-  return json({ company: row });
+  return json({ company: withLogoUrl(row) });
 };
 
 const handleCompanyDeactivate = async (env, ctx, session, companyId) => {
@@ -446,6 +475,98 @@ const handleCompanyDeactivate = async (env, ctx, session, companyId) => {
   if (!result.meta || result.meta.changes === 0) return json({ error: "company_not_found" }, 404);
   audit(env, ctx, session.name, "company.deactivated", "company", companyId, {});
   return json({ deactivated: true });
+};
+
+/* ------------------------------ company logo ------------------------------ */
+
+/**
+ * Logo bytes live in R2 (binding ASSETS), never in D1: the row only keeps the key.
+ * The signature check runs on the bytes themselves, so a mislabelled upload can
+ * neither sneak a script through nor be served with a type the browser sniffs.
+ */
+const sniffLogoType = (bytes, declared) => {
+  const match = LOGO_TYPES.find((type) => type.test(bytes));
+  if (!match) return null;
+  if (declared && declared !== match.mime) return null;
+  return match;
+};
+
+const handleCompanyLogoGet = async (env, companyId) => {
+  const row = await env.DB.prepare("SELECT logo_key FROM companies WHERE id=?").bind(companyId).first();
+  if (!row || !row.logo_key) return json({ error: "logo_not_found" }, 404);
+  if (!env.ASSETS) return json({ error: "storage_unavailable" }, 503);
+  const object = await env.ASSETS.get(row.logo_key);
+  if (!object) return json({ error: "logo_not_found" }, 404);
+  return new Response(object.body, {
+    headers: {
+      "content-type": (object.httpMetadata && object.httpMetadata.contentType) || "application/octet-stream",
+      "cache-control": "private, max-age=0, must-revalidate",
+      etag: `"${row.logo_key}"`,
+      "content-disposition": "inline",
+      "x-content-type-options": "nosniff",
+      /* a logo is artwork, never a document: no scripts, no framing, no navigation */
+      "content-security-policy": "default-src 'none'; sandbox",
+    },
+  });
+};
+
+const handleCompanyLogoUpload = async (request, env, ctx, session, companyId) => {
+  const row = await env.DB.prepare("SELECT id,logo_key FROM companies WHERE id=?").bind(companyId).first();
+  if (!row) return json({ error: "company_not_found" }, 404);
+  if (!env.ASSETS) return json({ error: "storage_unavailable" }, 503);
+  let form;
+  try {
+    form = await request.formData();
+  } catch {
+    return json({ error: "invalid_body" }, 400);
+  }
+  const file = form.get("file");
+  if (!file || typeof file === "string" || typeof file.arrayBuffer !== "function") {
+    return json({ error: "logo_file_required" }, 400);
+  }
+  if (file.size > MAX_LOGO_BYTES) return json({ error: "logo_too_large", max_bytes: MAX_LOGO_BYTES }, 413);
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  const type = sniffLogoType(bytes, file.type || "");
+  if (!type) return json({ error: "unsupported_image_type", accepted: LOGO_TYPES.map((t) => t.mime) }, 415);
+  const key = `${LOGO_PREFIX}${companyId}-${randomToken(6)}.${type.ext}`;
+  await env.ASSETS.put(key, bytes, {
+    httpMetadata: { contentType: type.mime },
+    customMetadata: { company_id: companyId },
+  });
+  await env.DB.prepare("UPDATE companies SET logo_key=?, updated_at=CURRENT_TIMESTAMP WHERE id=?")
+    .bind(key, companyId).run();
+  if (row.logo_key && row.logo_key !== key) {
+    /* the previous logo is unreachable now, so drop it instead of leaking buckets */
+    try { await env.ASSETS.delete(row.logo_key); } catch { /* the new logo is already live */ }
+  }
+  audit(env, ctx, session.name, "company.logo_uploaded", "company", companyId, {
+    type: type.mime, bytes: bytes.length, replaced: Boolean(row.logo_key),
+  });
+  /* Templates issued before the logo slot existed never ask for {{logo_url}}, so the
+     operator is told instead of silently getting a sheet without the new mark. */
+  const active = await env.DB.prepare(
+    "SELECT html FROM templates WHERE company_id=? AND active=1 ORDER BY version DESC LIMIT 1"
+  ).bind(companyId).first();
+  const template_uses_logo = active ? /\{\{\s*logo_url\s*\}\}/.test(active.html) : false;
+  const updated = await env.DB.prepare(`SELECT ${COMPANY_COLUMNS} FROM companies WHERE id=?`).bind(companyId).first();
+  return json({ company: withLogoUrl(updated), template_uses_logo }, 201);
+};
+
+const handleCompanyLogoDelete = async (env, ctx, session, companyId) => {
+  const row = await env.DB.prepare("SELECT id,logo_key FROM companies WHERE id=?").bind(companyId).first();
+  if (!row) return json({ error: "company_not_found" }, 404);
+  if (!row.logo_key) {
+    const current = await env.DB.prepare(`SELECT ${COMPANY_COLUMNS} FROM companies WHERE id=?`).bind(companyId).first();
+    return json({ removed: false, company: withLogoUrl(current) });
+  }
+  await env.DB.prepare("UPDATE companies SET logo_key=NULL, updated_at=CURRENT_TIMESTAMP WHERE id=?")
+    .bind(companyId).run();
+  if (env.ASSETS) {
+    try { await env.ASSETS.delete(row.logo_key); } catch { /* the row is already clear */ }
+  }
+  audit(env, ctx, session.name, "company.logo_removed", "company", companyId, {});
+  const updated = await env.DB.prepare(`SELECT ${COMPANY_COLUMNS} FROM companies WHERE id=?`).bind(companyId).first();
+  return json({ removed: true, company: withLogoUrl(updated) });
 };
 
 /* ============================ templates ============================ */
@@ -529,6 +650,7 @@ const renderTemplatePreview = async (env, company, html) => {
       email: company.email,
       currency: company.currency,
       letterhead_url: LETTERHEAD_URL,
+      logo_url: logoUrlFor(company),
     }),
   };
   return {
@@ -673,6 +795,7 @@ const handleQuotationCreate = async (request, env, ctx, session) => {
     name: company.name, legal_name: company.legal_name, address: company.address,
     phone: company.phone, email: company.email, currency: company.currency,
     letterhead_url: company.letterhead_key ? `/api/companies/${company.id}/letterhead` : LETTERHEAD_URL,
+    logo_url: logoUrlFor(company),
   };
   const id = crypto.randomUUID();
   try {
@@ -771,6 +894,12 @@ const handleQuotationCancel = async (env, ctx, session, id) => {
 
 const buildPrintFields = (row) => {
   const snapshot = parseJson(row.company_snapshot_json);
+  /* Branding follows the live company profile, exactly like the letterhead: a logo that
+     is replaced or removed must never leave a broken image on a reprint. The snapshot
+     value is only used where no company row is joined (template preview). */
+  const logoUrl = row.company_logo_key === undefined
+    ? snapshot.logo_url || ""
+    : logoUrlFor({ id: row.company_id, logo_key: row.company_logo_key }) || "";
   return {
     quote_number: row.quote_number,
     quote_date: formatDateDMY(row.quote_date),
@@ -785,12 +914,16 @@ const buildPrintFields = (row) => {
     company_phone: snapshot.phone || "",
     company_email: snapshot.email || "",
     letterhead_url: snapshot.letterhead_url || LETTERHEAD_URL,
+    /* printed wherever the template asks for {{logo_url}} — header mark or watermark */
+    logo_url: logoUrl || TRANSPARENT_PIXEL,
+    /* lets a template keep its own artwork when no logo has been uploaded */
+    logo_state: logoUrl ? "has-logo" : "no-logo",
   };
 };
 
 const handlePrint = async (env, url, id) => {
   const row = await env.DB.prepare(
-    "SELECT q.*, c.name AS company_name FROM quotations q JOIN companies c ON c.id=q.company_id " +
+    "SELECT q.*, c.name AS company_name, c.logo_key AS company_logo_key FROM quotations q JOIN companies c ON c.id=q.company_id " +
     "WHERE q.id=? AND q.deleted_at IS NULL"
   ).bind(id).first();
   if (!row) return json({ error: "quotation_not_found" }, 404);
@@ -887,6 +1020,11 @@ async function route(request, env, ctx, url) {
     if (!id && method === "POST") return handleCompanyCreate(request, env, ctx, session);
     if (id && !action && method === "PATCH") return handleCompanyPatch(request, env, ctx, session, id);
     if (id && !action && method === "DELETE") return handleCompanyDeactivate(env, ctx, session, id);
+    if (id && action === "logo" && !child) {
+      if (method === "GET") return handleCompanyLogoGet(env, id);
+      if (method === "POST") return handleCompanyLogoUpload(request, env, ctx, session, id);
+      if (method === "DELETE") return handleCompanyLogoDelete(env, ctx, session, id);
+    }
     if (id && action === "templates" && !child) {
       if (method === "GET") return handleTemplateList(env, id);
       if (method === "POST") return handleTemplateSave(request, env, ctx, session, id);

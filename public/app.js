@@ -55,6 +55,11 @@ const humanError = (error) => {
     template_is_active: "The live version cannot be deleted. Activate another version first.",
     company_not_found: "That company no longer exists.",
     invalid_body: "The request could not be read.",
+    logo_file_required: "Choose an image file first.",
+    unsupported_image_type: "Use a PNG, JPEG or WebP image.",
+    logo_too_large: "That image is larger than 512 KB. Resize it and try again.",
+    logo_not_found: "This company has no logo yet.",
+    storage_unavailable: "Logo storage is not configured on this deployment.",
   };
   return map[error?.message] || error?.message || "Something went wrong.";
 };
@@ -68,6 +73,20 @@ async function api(path, options = {}) {
     body: body === undefined ? undefined : JSON.stringify(body),
     ...rest,
   });
+  const type = response.headers.get("content-type") || "";
+  const data = type.includes("application/json") ? await response.json().catch(() => null) : null;
+  if (!response.ok) {
+    throw Object.assign(new Error((data && data.error) || `HTTP ${response.status}`), {
+      status: response.status,
+      data,
+    });
+  }
+  return data;
+}
+
+/** Same contract as api(), for multipart uploads (the browser sets the boundary). */
+async function apiUpload(path, formData) {
+  const response = await fetch(path, { method: "POST", credentials: "same-origin", body: formData });
   const type = response.headers.get("content-type") || "";
   const data = type.includes("application/json") ? await response.json().catch(() => null) : null;
   if (!response.ok) {
@@ -373,7 +392,86 @@ function paintCompanySettings() {
   $("cPrefix").value = company?.quotation_prefix || "QA-";
   $("cCurrency").value = company?.currency || "AED";
   $("deactivateBtn").disabled = !company || !company.active;
+  paintLogoBlock();
   renderCompanyList();
+}
+
+/** The logo pane follows the active company: one upload serves the mark and the watermark. */
+function paintLogoBlock() {
+  const company = activeCompany();
+  const url = company?.logo_url || "";
+  const image = $("logoImage");
+  if (url) {
+    image.src = url;
+    image.hidden = false;
+  } else {
+    image.removeAttribute("src");
+    image.hidden = true;
+  }
+  $("logoEmpty").hidden = Boolean(url);
+  $("logoPick").disabled = !company;
+  $("logoRemove").disabled = !company || !url;
+  $("logoStatus").textContent = !company
+    ? "Select a company to attach a logo."
+    : url
+      ? "On file — prints as the header mark and repeats as a faint watermark."
+      : "No logo yet — the template keeps its built-in artwork.";
+}
+
+/** Applies a company row returned by the API to the current view. */
+function replaceCompany(company) {
+  const index = state.companies.findIndex((c) => c.id === company.id);
+  if (index >= 0) state.companies[index] = company;
+  paintCompanyChrome();
+  paintCompanySettings();
+  renderCompanySelect();
+}
+
+async function uploadLogo(file) {
+  const company = activeCompany();
+  if (!company || !file) return;
+  if (!["image/png", "image/jpeg", "image/webp"].includes(file.type)) {
+    toast("Use a PNG, JPEG or WebP image.", "error");
+    return;
+  }
+  if (file.size > 512 * 1024) {
+    toast("That image is larger than 512 KB. Resize it and try again.", "error");
+    return;
+  }
+  const form = new FormData();
+  form.append("file", file);
+  $("logoPick").disabled = true;
+  let warning = "";
+  try {
+    const data = await apiUpload(`/api/companies/${encodeURIComponent(company.id)}/logo`, form);
+    replaceCompany(data.company);
+    if (data.template_uses_logo) {
+      toast("Logo saved. New quotations print it immediately.");
+    } else {
+      /* the file is stored, but the live sheet has no slot for it yet */
+      warning = "On file, but the live template never asks for {{logo_url}} — add it under Print template.";
+      toast("Logo saved, but the live template has no {{logo_url}} slot — see Print template.", "error");
+    }
+  } catch (error) {
+    toast(humanError(error), "error");
+  } finally {
+    $("logoFile").value = "";
+    paintLogoBlock();
+    if (warning) $("logoStatus").textContent = warning;
+  }
+}
+
+async function removeLogo() {
+  const company = activeCompany();
+  if (!company || !company.logo_url) return;
+  if (!confirm(`Remove the logo for ${company.name}? Already issued quotations keep their sheet content.`)) return;
+  try {
+    const data = await api(`/api/companies/${encodeURIComponent(company.id)}/logo`, { method: "DELETE" });
+    replaceCompany(data.company);
+    toast("Logo removed.");
+  } catch (error) {
+    toast(humanError(error), "error");
+  }
 }
 
 function renderCompanyList() {
@@ -425,11 +523,7 @@ async function saveCompany(event) {
         currency: $("cCurrency").value.trim(),
       },
     });
-    const index = state.companies.findIndex((c) => c.id === company.id);
-    if (index >= 0) state.companies[index] = data.company;
-    paintCompanyChrome();
-    paintCompanySettings();
-    renderCompanySelect();
+    replaceCompany(data.company);
     toast("Company details saved.");
   } catch (error) {
     toast(humanError(error), "error");
@@ -827,6 +921,12 @@ function bind() {
   $("quoteDate").addEventListener("change", refreshNextNumber);
   $("logoutBtn").addEventListener("click", () => signOut());
   $("companyForm").addEventListener("submit", saveCompany);
+  $("logoPick").addEventListener("click", () => $("logoFile").click());
+  $("logoFile").addEventListener("change", () => {
+    const file = $("logoFile").files && $("logoFile").files[0];
+    if (file) uploadLogo(file);
+  });
+  $("logoRemove").addEventListener("click", removeLogo);
   $("deactivateBtn").addEventListener("click", deactivateCompany);
   $("newCompanyForm").addEventListener("submit", createCompany);
   $("templateSave").addEventListener("click", publishTemplate);

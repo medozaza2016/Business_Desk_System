@@ -29,8 +29,52 @@ into each quotation when it is issued, so editing a template never changes an ex
 | `{{company_phone}}` | `+971 4 000 0000` | May be empty |
 | `{{company_email}}` | `quotes@example.com` | May be empty |
 | `{{letterhead_url}}` | `/letterhead_background.png` | Same-origin path to the letterhead artwork |
+| `{{logo_url}}` | `/api/companies/8f3…/logo?v=…` | The company logo uploaded in Settings → *Company profile*; a 1×1 transparent GIF when none exists |
+| `{{logo_state}}` | `has-logo` | `has-logo` or `no-logo` — put it in a `class` attribute to switch artwork with CSS |
 
-Company values come from the snapshot stored on the quotation, not from the live company row.
+Company values come from the snapshot stored on the quotation, not from the live company row — with one
+exception: `letterhead_url` and `logo_url` stay live, so re-uploading a logo can never leave a broken
+image on a reprint.
+
+## Company logo and watermark
+
+One image serves both jobs. Upload it in **Settings → Company profile → Brand logo** (PNG, JPEG or WebP,
+≤ 512 KB) and print it wherever the template asks for `{{logo_url}}`:
+
+```html
+<!-- header mark -->
+<div class="brand-logo {{logo_state}}">
+  <img class="logo-builtin" src="data:image/webp;base64,…" alt="">
+  <img class="logo-upload" src="{{logo_url}}" alt="">
+</div>
+
+<!-- faint watermark, same file -->
+<div class="watermark {{logo_state}}">
+  <img class="wm-upload" src="{{logo_url}}" alt="">
+</div>
+```
+
+```css
+.brand-logo.has-logo .logo-builtin, .brand-logo.no-logo .logo-upload { display: none; }
+.watermark.has-logo .wm-upload { /* a removed logo prints nothing */ }
+.watermark { opacity: .22; }        /* watermark strength */
+```
+
+Why two tokens:
+
+- `{{logo_url}}` degrades to a transparent 1×1 GIF instead of an empty `src`, so a template that prints
+  it while no logo is uploaded never shows a broken-image icon.
+- `{{logo_state}}` lets a template keep its own built-in artwork (the shipped default keeps the
+  Challenger winged-C) and drop it the moment a company logo exists. Both values are plain text, so they
+  stay inside the "values are HTML-escaped" rule.
+
+Templates published **before** this feature do not contain the tokens: the upload still succeeds, the API
+returns `template_uses_logo: false` and the desk warns you. Add the block above to the live template and
+publish a new version. The Marshall Auctions template is an example of a company whose artwork lives
+entirely in its own SVG; it simply never references `{{logo_url}}`.
+
+The image is same-origin, which the print CSP already allows (`img-src 'self' data:`); uploaded SVGs are
+refused by the API, so a logo can never be a script-bearing document.
 
 ## Default template
 

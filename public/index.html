@@ -142,6 +142,26 @@
       <section class="panel settings-pane" data-pane="company">
         <div class="card-head"><h2>Company profile</h2><span class="chip" id="companyStateChip">—</span></div>
         <div class="card-body">
+          <div class="logo-field">
+            <div class="logo-preview" id="logoPreview">
+              <img id="logoImage" alt="Company logo" hidden>
+              <span class="logo-empty" id="logoEmpty">No logo</span>
+            </div>
+            <div class="logo-copy">
+              <p class="field-label">Brand logo <em>header mark + watermark</em></p>
+              <p class="logo-hint">
+                PNG, JPEG or WebP · up to 512 KB · a transparent PNG prints cleanest.
+                It prints wherever the template asks for <code>{{logo_url}}</code> — the
+                default sheet puts it in the header and repeats it faintly as a watermark.
+              </p>
+              <div class="logo-buttons">
+                <button class="btn small" type="button" id="logoPick">Upload logo</button>
+                <button class="btn ghost small" type="button" id="logoRemove">Remove</button>
+                <input id="logoFile" type="file" accept="image/png,image/jpeg,image/webp" hidden>
+              </div>
+              <p class="logo-status" id="logoStatus">—</p>
+            </div>
+          </div>
           <form id="companyForm" novalidate>
             <div class="grid-2">
               <label class="field"><span class="field-label">Display name</span><input id="cName" required maxlength="120"></label>
