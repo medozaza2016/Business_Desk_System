@@ -386,6 +386,7 @@ function paintCompanySettings() {
   paintPasscodeChrome();
   $("cName").value = company?.name || "";
   $("cLegal").value = company?.legal_name || "";
+  $("cLegalAr").value = company?.legal_name_ar || "";
   $("cPhone").value = company?.phone || "";
   $("cEmail").value = company?.email || "";
   $("cAddress").value = company?.address || "";
@@ -516,6 +517,7 @@ async function saveCompany(event) {
       body: {
         name: $("cName").value.trim(),
         legal_name: $("cLegal").value.trim(),
+        legal_name_ar: $("cLegalAr").value.trim(),
         phone: $("cPhone").value.trim(),
         email: $("cEmail").value.trim(),
         address: $("cAddress").value.trim(),

@@ -371,7 +371,7 @@ const handleRotatePasscode = async (request, env, ctx, session) => {
 /* ============================ companies ============================ */
 
 const COMPANY_COLUMNS =
-  "id,name,slug,legal_name,phone,email,address,quotation_prefix,currency,logo_key,letterhead_key,font_name,active,created_at";
+  "id,name,slug,legal_name,legal_name_ar,phone,email,address,quotation_prefix,currency,logo_key,letterhead_key,font_name,active,created_at";
 
 /**
  * Public path of a company's uploaded logo, or null when it has none.
@@ -393,8 +393,13 @@ const seedCompany = async (env) => {
   if (count && Number(count.n) > 0) return null;
   const id = crypto.randomUUID();
   await env.DB.prepare(
-    "INSERT INTO companies(id,name,slug,legal_name,phone,email,address,quotation_prefix,currency) VALUES(?,?,?,?,?,?,?,?,?)"
-  ).bind(id, "Challenger Cars", "challenger-cars", "Challenger Cars", "", "", "", "QA-", "AED").run();
+    "INSERT INTO companies(id,name,slug,legal_name,legal_name_ar,phone,email,address,quotation_prefix,currency) VALUES(?,?,?,?,?,?,?,?,?,?)"
+  ).bind(
+    id, "Challenger Cars", "challenger-cars",
+    "CHALLENGER USED CARS EXHB. LLC",
+    "شالنجر للسيارات المستعملة ذ.م.م.",
+    "", "", "", "QA-", "AED"
+  ).run();
   await env.DB.prepare("INSERT INTO templates(id,company_id,name,version,html,active) VALUES(?,?,?,1,?,1)")
     .bind(crypto.randomUUID(), id, "Default A4 quotation", DEFAULT_TEMPLATE).run();
   return { id, name: "Challenger Cars", slug: "challenger-cars" };
@@ -416,10 +421,11 @@ const handleCompanyCreate = async (request, env, ctx, session) => {
   const id = crypto.randomUUID();
   try {
     await env.DB.prepare(
-      "INSERT INTO companies(id,name,slug,legal_name,phone,email,address,quotation_prefix,currency) VALUES(?,?,?,?,?,?,?,?,?)"
+      "INSERT INTO companies(id,name,slug,legal_name,legal_name_ar,phone,email,address,quotation_prefix,currency) VALUES(?,?,?,?,?,?,?,?,?,?)"
     ).bind(
       id, name, slug,
       text(body?.legal_name, 160) || name,
+      text(body?.legal_name_ar, 160),
       text(body?.phone, 40),
       text(body?.email, 160),
       text(body?.address, 300),
@@ -438,7 +444,7 @@ const handleCompanyCreate = async (request, env, ctx, session) => {
 
 /** @type {[string, number][]} */
 const COMPANY_TEXT_FIELDS = [
-  ["name", 120], ["legal_name", 160], ["phone", 40], ["email", 160],
+  ["name", 120], ["legal_name", 160], ["legal_name_ar", 160], ["phone", 40], ["email", 160],
   ["address", 300], ["quotation_prefix", 12], ["currency", 3], ["font_name", 80],
 ];
 
@@ -645,6 +651,7 @@ const renderTemplatePreview = async (env, company, html) => {
     company_snapshot_json: JSON.stringify({
       name: company.name,
       legal_name: company.legal_name,
+      legal_name_ar: company.legal_name_ar,
       address: company.address,
       phone: company.phone,
       email: company.email,
@@ -792,7 +799,8 @@ const handleQuotationCreate = async (request, env, ctx, session) => {
   ).bind(company.id).first();
   const amountWords = amountWordsFromCents(cents);
   const snapshot = {
-    name: company.name, legal_name: company.legal_name, address: company.address,
+    name: company.name, legal_name: company.legal_name, legal_name_ar: company.legal_name_ar,
+    address: company.address,
     phone: company.phone, email: company.email, currency: company.currency,
     letterhead_url: company.letterhead_key ? `/api/companies/${company.id}/letterhead` : LETTERHEAD_URL,
     logo_url: logoUrlFor(company),
@@ -892,6 +900,17 @@ const handleQuotationCancel = async (env, ctx, session, id) => {
 
 /* ============================== print ============================== */
 
+/**
+ * Splits a legal name into its brand word and the remainder, so a template can keep the first
+ * word in the sheet's accent colour without letting markup into the value (values stay escaped):
+ * "CHALLENGER USED CARS EXHB. LLC" -> { head: "CHALLENGER", tail: "USED CARS EXHB. LLC" }.
+ */
+const splitBrandWord = (value) => {
+  const parts = String(value || "").trim().split(/\s+/).filter(Boolean);
+  const head = parts.shift() || "";
+  return { head, tail: parts.join(" ") };
+};
+
 const buildPrintFields = (row) => {
   const snapshot = parseJson(row.company_snapshot_json);
   /* Branding follows the live company profile, exactly like the letterhead: a logo that
@@ -900,6 +919,13 @@ const buildPrintFields = (row) => {
   const logoUrl = row.company_logo_key === undefined
     ? snapshot.logo_url || ""
     : logoUrlFor({ id: row.company_id, logo_key: row.company_logo_key }) || "";
+  /* Both legal names print in the header lockup. Wording comes from the snapshot; the live
+     column only fills the gaps, which is how quotations issued before the Arabic name existed
+     still print it after the profile is completed. */
+  const legalEn = snapshot.legal_name || snapshot.name || row.company_legal_name || row.company_name || "";
+  const legalAr = snapshot.legal_name_ar || row.company_legal_name_ar || "";
+  const brandEn = splitBrandWord(legalEn);
+  const brandAr = splitBrandWord(legalAr);
   return {
     quote_number: row.quote_number,
     quote_date: formatDateDMY(row.quote_date),
@@ -910,6 +936,13 @@ const buildPrintFields = (row) => {
     amount: formatMoney(row.amount_cents),
     amount_words: row.amount_words,
     company_name: snapshot.legal_name || snapshot.name || row.company_name || "",
+    /* the two legal names, English then Arabic, plus their accent-ready halves */
+    company_legal_name_en: legalEn,
+    company_legal_name_en_head: brandEn.head,
+    company_legal_name_en_tail: brandEn.tail,
+    company_legal_name_ar: legalAr,
+    company_legal_name_ar_head: brandAr.head,
+    company_legal_name_ar_tail: brandAr.tail,
     company_address: snapshot.address || "",
     company_phone: snapshot.phone || "",
     company_email: snapshot.email || "",
@@ -923,7 +956,9 @@ const buildPrintFields = (row) => {
 
 const handlePrint = async (env, url, id) => {
   const row = await env.DB.prepare(
-    "SELECT q.*, c.name AS company_name, c.logo_key AS company_logo_key FROM quotations q JOIN companies c ON c.id=q.company_id " +
+    "SELECT q.*, c.name AS company_name, c.legal_name AS company_legal_name, " +
+    "c.legal_name_ar AS company_legal_name_ar, c.logo_key AS company_logo_key " +
+    "FROM quotations q JOIN companies c ON c.id=q.company_id " +
     "WHERE q.id=? AND q.deleted_at IS NULL"
   ).bind(id).first();
   if (!row) return json({ error: "quotation_not_found" }, 404);

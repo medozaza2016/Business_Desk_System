@@ -37,7 +37,7 @@ Passcode rules: 6–200 characters. `name` (optional, ≤60 chars) only tags the
 |---|---|---|---|
 | `POST` | `/api/auth/passcode` | `{current, next}` | `{rotated:true}` + fresh cookie for this client; all other sessions die |
 | `GET` | `/api/companies` | – | `{companies:[…]}` ordered active first |
-| `POST` | `/api/companies` | `{name, legal_name?, phone?, email?, address?, quotation_prefix?, currency?}` | `201 {company}` (also creates template v1) |
+| `POST` | `/api/companies` | `{name, legal_name?, legal_name_ar?, phone?, email?, address?, quotation_prefix?, currency?}` | `201 {company}` (also creates template v1) |
 | `PATCH` | `/api/companies/:id` | any of the above plus `active` | `{company}` |
 | `DELETE` | `/api/companies/:id` | – | `{deactivated:true}` (soft, history is kept) |
 | `GET` | `/api/companies/:id/logo` | – | see the public routes above |
