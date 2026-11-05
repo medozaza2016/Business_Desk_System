@@ -1,0 +1,201 @@
+/* ============================================================================
+   Public share page — /s/<token>
+   ----------------------------------------------------------------------------
+   The customer-facing view of one quotation: the figures, and the signed sheet
+   itself. Rendered on the Worker (not a client-side page) so it works from a
+   WhatsApp tap with no session cookie, no JavaScript and no API round-trip —
+   one document, one image.
+
+   It carries the desk aesthetic on purpose: whoever receives the link already
+   holds the printed sheet, so the page reads as the same paperwork, not as a
+   marketing landing page. Everything is inline; the only subresource is the
+   scan image, which keeps the CSP as tight as the logo route's.
+   ========================================================================= */
+
+const escapeHtml = (value) =>
+  String(value ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+const STYLE = `
+:root {
+  --paper: #f4f2ee; --sheet: #ffffff; --ink: #111111; --ink-soft: #3a3833;
+  --muted: #6e6a62; --line: #dbd6cc; --red: #c51e25; --red-deep: #9d1319;
+  --mono: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
+  --sans: Arial, "Helvetica Neue", Helvetica, "Segoe UI", Tahoma, sans-serif;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; padding: 22px 16px 48px; background: var(--paper); color: var(--ink);
+  font: 14px/1.55 var(--sans); font-variant-numeric: tabular-nums;
+  -webkit-font-smoothing: antialiased; -webkit-text-size-adjust: 100%;
+}
+.sheet {
+  max-width: 720px; margin: 0 auto; background: var(--sheet); border: 1px solid var(--line);
+  border-radius: 3px; box-shadow: 0 20px 50px -34px #1114, 0 1px 0 #fff inset; overflow: hidden;
+}
+.rule { height: 5px; background: repeating-linear-gradient(90deg, var(--red) 0 22px, #111 22px 44px); }
+.head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding: 22px 22px 16px; }
+.brand { font-size: 13px; font-weight: 800; letter-spacing: .14em; text-transform: uppercase; }
+.brand b { color: var(--red); }
+.brand small { display: block; margin-top: 4px; font-size: 10px; font-weight: 400; letter-spacing: .12em; color: var(--muted); }
+.brand-ar { font-size: 13px; line-height: 1.5; text-align: right; color: var(--ink-soft); max-width: 46%; }
+.band { display: flex; align-items: flex-end; justify-content: space-between; gap: 14px; flex-wrap: wrap;
+  padding: 16px 22px; border-top: 1px solid var(--line); border-bottom: 3px solid var(--red); background: #fbfaf7; }
+.label { margin: 0; font-size: 9.5px; font-weight: 700; letter-spacing: .18em; text-transform: uppercase; color: var(--muted); }
+.number { margin: 3px 0 0; font-family: var(--mono); font-size: 30px; line-height: 1; letter-spacing: -.03em; }
+.band-date { font-family: var(--mono); font-size: 12.5px; color: var(--ink-soft); text-align: right; }
+.facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px 18px; margin: 0; padding: 20px 22px; }
+.facts div { min-width: 0; }
+.facts dt { font-size: 9.5px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
+.facts dd { margin: 4px 0 0; font-size: 14px; overflow-wrap: anywhere; }
+.facts .mono { font-family: var(--mono); font-size: 13px; }
+.facts .total dd { font-family: var(--mono); font-size: 20px; font-weight: 700; letter-spacing: -.02em; }
+.words { margin: 0 22px; padding: 12px 14px; border-left: 3px solid var(--red); background: #fbf7f4;
+  font-size: 12.5px; line-height: 1.6; color: var(--ink-soft); }
+.words b { display: block; font-size: 9.5px; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); margin-bottom: 3px; }
+.note { margin: 14px 22px 0; font-size: 12.5px; color: var(--ink-soft); }
+.note em { font-style: normal; font-family: var(--mono); font-size: 11px; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); }
+.section-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px;
+  margin: 26px 22px 0; padding-bottom: 8px; border-bottom: 2px solid var(--ink); }
+.section-head h2 { margin: 0; font-size: 11px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; }
+.section-head span { font-family: var(--mono); font-size: 10px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.scan-stage { margin: 14px 22px 0; padding: 14px; background: repeating-linear-gradient(45deg, #eae7e1 0 8px, #eeebe5 8px 16px); border: 1px solid var(--line); }
+.scan-stage a { display: block; }
+.scan-stage img { display: block; width: 100%; height: auto; background: #fff; box-shadow: 0 10px 30px -18px #1119, 0 0 0 1px #d9d4ca; }
+.actions { display: flex; flex-wrap: wrap; gap: 8px; padding: 16px 22px 22px; }
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; min-height: 40px; padding: 0 16px;
+  border: 1px solid transparent; border-radius: 3px; background: var(--ink); color: #fff;
+  font-size: 11.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; text-decoration: none;
+}
+.btn.primary { background: var(--red); }
+.btn.ghost { background: transparent; border-color: var(--line); color: var(--ink-soft); }
+.foot { margin-top: 26px; padding: 13px 22px; border-top: 1px solid var(--line); background: #fbfaf7;
+  font-family: var(--mono); font-size: 10px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+@media (max-width: 480px) {
+  .head { flex-direction: column; gap: 8px; }
+  .brand-ar { max-width: 100%; text-align: left; }
+  .facts { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+  .number { font-size: 24px; }
+  .band-date { text-align: left; }
+  .actions .btn { flex: 1 1 100%; }
+}
+@media print {
+  body { padding: 0; background: #fff; }
+  .sheet { box-shadow: none; border: 0; }
+  .actions { display: none; }
+}`;
+
+
+/** Shared shell so the "link is gone" page cannot drift from the real one. */
+const shell = ({ title, description, image, body }) => `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="light">
+<meta name="robots" content="noindex, nofollow">
+<title>${escapeHtml(title)}</title>
+<meta name="description" content="${escapeHtml(description)}">
+<meta property="og:type" content="website">
+<meta property="og:title" content="${escapeHtml(title)}">
+<meta property="og:description" content="${escapeHtml(description)}">
+${image ? `<meta property="og:image" content="${escapeHtml(image)}">` : ""}
+<style>${STYLE}</style>
+</head>
+<body>
+<div class="sheet">
+  <div class="rule"></div>
+${body}
+</div>
+</body>
+</html>`;
+
+/**
+ * The customer's view of one quotation.
+ * @param {object} view
+ * @param {{quote_number:string,quote_date_text:string,model:string,year:string,chassis:string,
+ *          amount:string,currency:string,amount_words:string,comments:string,status:string}} view.quotation
+ * @param {{name:string,legal_name:string,legal_name_ar:string,phone:string,email:string}} view.company
+ * @param {{bytes:number,width:number,height:number}|null} view.scan
+ * @param {{sheet:string,image:string,download:string}} view.links
+ */
+export function renderSharePage({ quotation, company, scan, links }) {
+  const legalEn = company.legal_name || company.name || "Quotation";
+  const parts = String(legalEn).split(/\s+/);
+  const head = parts.shift() || "Quotation";
+  const legalAr = company.legal_name_ar || "";
+  const currency = quotation.currency || "AED";
+  const total = `${currency} ${quotation.amount}`;
+  const facts = [
+    ["Vehicle", `${quotation.model} · ${quotation.year}`, ""],
+    ["Chassis number", quotation.chassis, "mono"],
+    ["Quotation date", quotation.quote_date_text, "mono"],
+    ["Status", quotation.status === "completed" ? "Completed" : "Issued", ""],
+  ];
+
+  const body = `  <div class="head">
+    <div class="brand"><b>${escapeHtml(head)}</b> ${escapeHtml(parts.join(" "))}
+      <small>signed quotation</small>
+    </div>
+    ${legalAr ? `<div class="brand-ar" lang="ar" dir="rtl">${escapeHtml(legalAr)}</div>` : ""}
+  </div>
+
+  <div class="band">
+    <div>
+      <p class="label">Quotation</p>
+      <p class="number">${escapeHtml(quotation.quote_number)}</p>
+    </div>
+    <div class="band-date">${escapeHtml(quotation.quote_date_text)}</div>
+  </div>
+
+  <dl class="facts">
+    ${facts.map(([label, value, kind]) => `<div><dt>${escapeHtml(label)}</dt><dd class="${kind}">${escapeHtml(value)}</dd></div>`).join("\n    ")}
+    <div class="total" style="grid-column:1/-1"><dt>Estimated value</dt><dd>${escapeHtml(total)}</dd></div>
+  </dl>
+
+  <p class="words"><b>Amount in words</b>${escapeHtml(quotation.amount_words)}</p>
+  ${quotation.comments ? `<p class="note"><em>Note</em><br>${escapeHtml(quotation.comments)}</p>` : ""}
+
+  <div class="section-head">
+    <h2>Signed copy</h2>
+    <span>${scan ? "on file" : "pending"}</span>
+  </div>
+  ${scan
+    ? `<div class="scan-stage">
+    <a href="${escapeHtml(links.image)}" target="_blank" rel="noopener">
+      <img src="${escapeHtml(links.image)}" alt="Signed copy of quotation ${escapeHtml(quotation.quote_number)}" width="${Number(scan.width) || 1240}" height="${Number(scan.height) || 1754}">
+    </a>
+  </div>
+  <div class="actions">
+    <a class="btn primary" href="${escapeHtml(links.download)}" download>Download the picture</a>
+    <a class="btn ghost" href="${escapeHtml(links.sheet)}" target="_blank" rel="noopener">Open the A4 sheet</a>
+  </div>`
+    : `<p class="note">The signed copy is not on file yet. Open the A4 sheet below, or ask the desk to scan it.</p>
+  <div class="actions">
+    <a class="btn primary" href="${escapeHtml(links.sheet)}" target="_blank" rel="noopener">Open the A4 sheet</a>
+  </div>`}
+
+  <div class="foot">${escapeHtml([company.phone, company.email].filter(Boolean).join(" · ") || legalEn)}</div>`;
+
+  return shell({
+    title: `Quotation ${quotation.quote_number} · ${legalEn}`,
+    description: `${quotation.model} ${quotation.year} · ${total} · ${quotation.quote_date_text}`,
+    image: scan ? links.image : "",
+    body,
+  });
+}
+
+/**
+ * Shown for a revoked token, a cancelled record or a typo. It says nothing about
+ * whether the quotation exists: the link, not the record, is what expired.
+ */
+export function renderShareMissing() {
+  return shell({
+    title: "This link is no longer active",
+    description: "The quotation link has expired or was revoked by the desk.",
+    image: "",
+    body: `  <div class="head"><div class="brand"><b>QUOTATION</b> DESK<small>link unavailable</small></div></div>
+  <div class="band"><div><p class="label">Link status</p><p class="number">no longer active</p></div></div>
+  <p class="note" style="margin:18px 22px 0">This link has expired or was revoked. Ask the desk for a fresh one — the quotation itself is unchanged.</p>`,
+  });
+}

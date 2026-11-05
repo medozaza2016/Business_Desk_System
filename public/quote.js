@@ -1,14 +1,26 @@
-/* Quotation record page — edit details, live A4 sheet preview, print. */
+/* Quotation record page — the signed copy first, then the editable details.
+   The page answers one question before any other: "where is the paper the customer
+   signed, and how do I hand it over?". The figures, the A4 preview and the edit form
+   stay below it, unchanged. */
 
 import { confirmAction } from "./dialog.js";
+import { openScanner } from "./scan.js";
 
 /** @param {string} id @returns {any} */
 const $ = (id) => document.getElementById(id);
 const A4_W = 793.7;   // 210mm at 96dpi
 const A4_H = 1122.5;  // 297mm at 96dpi
 
-const state = { id: null, quote: null, previewCount: 0 };
-state.id = new URLSearchParams(location.search).get("id");
+const state = {
+  id: new URLSearchParams(location.search).get("id"),
+  quote: null,
+  previewCount: 0,
+  /** desk-wide default for the WhatsApp hand-off, read from /api/settings */
+  settings: null,
+  /** what this particular send will do; starts at the desk default */
+  sendMode: "file",
+  busy: false,
+};
 
 async function api(path, options = {}) {
   const { body, method = "GET", ...rest } = options;
@@ -30,13 +42,27 @@ async function api(path, options = {}) {
   return data;
 }
 
+/** Multipart upload (the browser sets the boundary itself). */
+async function apiUpload(path, formData) {
+  const response = await fetch(path, { method: "POST", credentials: "same-origin", body: formData });
+  const type = response.headers.get("content-type") || "";
+  const data = type.includes("application/json") ? await response.json().catch(() => null) : null;
+  if (!response.ok) {
+    throw Object.assign(new Error((data && data.error) || `HTTP ${response.status}`), {
+      status: response.status,
+      data,
+    });
+  }
+  return data;
+}
+
 let toastTimer = null;
 function toast(message, kind = "ok") {
   const node = $("toast");
   node.textContent = message;
   node.className = `toast show${kind === "error" ? " error" : ""}`;
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => { node.className = "toast"; }, 3200);
+  toastTimer = setTimeout(() => { node.className = "toast"; }, 3600);
 }
 
 const message = (error) => {
@@ -45,6 +71,15 @@ const message = (error) => {
     quotation_number_already_exists: "That quotation number is already used.",
     invalid_amount: "Enter a value between 0 and 99,999,999.99.",
     invalid_quote_date: "Enter a valid date.",
+    quotation_completed: "This record is completed. Reopen it before changing anything.",
+    scan_required: "Scan the signed page before marking the record completed.",
+    scan_not_found: "The signed copy is no longer on file.",
+    scan_file_required: "The scan came back empty. Try again.",
+    scan_too_large: "That scan is larger than 4 MB. Try again.",
+    unsupported_image_type: "That file is not a JPEG, PNG or WebP image.",
+    storage_unavailable: "File storage is not configured on this deployment.",
+    share_link_unavailable: "The share link could not be created.",
+    scan_failed: "The scanner produced no page. Try again.",
   };
   return map[error?.message] || error?.message || "Something went wrong.";
 };
@@ -68,16 +103,107 @@ function refreshPreview() {
   $("preview").src = `/api/quotations/${encodeURIComponent(state.id)}/print?sheet=${state.previewCount}`;
 }
 
-function paint(quote) {
-  state.quote = quote;
+
+/* ------------------------------------------------------------------ paint --- */
+
+const bytes = (value) => {
+  const size = Number(value) || 0;
+  if (!size) return "—";
+  if (size < 1024) return `${size} B`;
+  if (size < 1024 * 1024) return `${Math.round(size / 1024)} KB`;
+  return `${(size / (1024 * 1024)).toFixed(1)} MB`;
+};
+
+const stampDate = (value) => {
+  if (!value) return "—";
+  const date = new Date(String(value).includes("T") ? value : String(value).replace(" ", "T") + "Z");
+  if (Number.isNaN(date.getTime())) return String(value).slice(0, 16);
+  return date.toLocaleString(undefined, {
+    day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit",
+  });
+};
+
+/** The header band: number, meta strip, status chip and the completion button. */
+function paintShell(quote) {
   document.title = `${quote.quote_number} · Challenger Quotation`;
   $("recordNumber").textContent = quote.quote_number;
   $("metaDate").textContent = quote.quote_date_text || quote.quote_date;
   $("metaVehicle").textContent = `${quote.model} · ${quote.year}`;
   $("metaChassis").textContent = quote.chassis;
   $("metaValue").textContent = `${quote.currency || "AED"} ${quote.amount}`;
+  $("metaPaperwork").textContent = quote.status === "completed"
+    ? "signed · completed"
+    : quote.has_scan ? "signed" : "not signed yet";
   $("companyChip").textContent = quote.company?.name || "company";
-  $("statusChip").textContent = "issued";
+
+  const completed = quote.status === "completed";
+  const chip = $("statusChip");
+  chip.textContent = completed ? "completed" : quote.has_scan ? "signed" : "issued";
+  chip.className = `chip ${completed || quote.has_scan ? "ok" : "off"}`;
+
+  $("completeBtn").textContent = completed ? "Reopen record" : "Mark completed";
+  $("completeBtn").className = completed ? "btn ghost small" : "btn primary small";
+  $("cancelBtn").disabled = completed;
+}
+
+/** The signed-copy card: picture, measurements, send controls, completion stamp. */
+function paintSigned(quote) {
+  const scan = quote.scan || null;
+  const completed = quote.status === "completed";
+  const image = $("signedImage");
+  const chip = $("signedChip");
+
+  $("signedCard").dataset.state = scan ? "signed" : "empty";
+  chip.textContent = scan ? (completed ? "on file · completed" : "on file") : "missing";
+  chip.className = `chip ${scan ? "ok" : "off"}`;
+
+  if (scan) {
+    image.src = scan.url;
+    image.hidden = false;
+    $("signedEmpty").hidden = true;
+  } else {
+    image.removeAttribute("src");
+    image.hidden = true;
+    $("signedEmpty").hidden = false;
+  }
+
+  $("scanFile").textContent = scan ? String(scan.content_type || "").replace("image/", "").toUpperCase() : "—";
+  $("scanSize").textContent = scan ? bytes(scan.bytes) : "—";
+  $("scanDimensions").textContent = scan && scan.width ? `${scan.width} × ${scan.height} px` : "—";
+  $("scanCaptured").textContent = scan ? stampDate(scan.created_at) : "—";
+
+  $("scanBtn").hidden = Boolean(scan);
+  $("replaceBtn").hidden = !scan;
+  $("sendBlock").hidden = !scan;
+  $("signedStamp").hidden = !completed;
+
+  $("shareBtn").textContent = quote.share_path ? "Rotate link" : "Create link";
+  $("removeScanBtn").disabled = !scan;
+  $("downloadBtn").disabled = !scan;
+  $("sendBtn").disabled = !scan;
+  paintSendMode();
+}
+
+/** The two-way switch mirrors the desk default until the operator picks otherwise. */
+function paintSendMode() {
+  const wanted = state.sendMode;
+  for (const button of $("sendMode").querySelectorAll("button")) {
+    button.setAttribute("aria-pressed", button.dataset.mode === wanted ? "true" : "false");
+  }
+  const hasLink = Boolean(state.quote?.share_path);
+  if (wanted === "link") {
+    $("sendBtn").textContent = hasLink ? "Send the link on WhatsApp" : "Create a link and send";
+    $("signedHint").textContent = "The customer gets a private page with the figures and the signed page. Rotate the link if it ever leaks.";
+  } else {
+    $("sendBtn").textContent = "Send the signed file on WhatsApp";
+    $("signedHint").textContent = "WhatsApp opens with the page already attached and you choose the chat. On a computer the picture downloads instead, ready to attach.";
+  }
+}
+
+function paint(quote) {
+  state.quote = quote;
+  paintShell(quote);
+  paintSigned(quote);
 
   $("fNumber").value = quote.quote_number;
   $("fDate").value = quote.quote_date;
@@ -89,22 +215,42 @@ function paint(quote) {
   $("fAmount").value = quote.amount;
   $("fWords").value = quote.amount_words || "";
 
+  const completed = quote.status === "completed";
+  $("saveBtn").disabled = completed;
+  for (const id of ["fNumber", "fDate", "fModel", "fYear", "fChassis", "fComments", "fAmount"]) {
+    $(id).readOnly = completed;
+  }
+  $("formNote").textContent = completed
+    ? "This record is completed, so its numbers are frozen. Reopen it in the header to make changes."
+    : "The sheet is rendered from the template snapshot captured when this record was issued. Later template versions never change an existing quotation.";
+
   const sheet = `/api/quotations/${encodeURIComponent(quote.id)}/print`;
   $("previewTab").href = sheet;
   refreshPreview();
 }
 
+/* ------------------------------------------------------------------- load --- */
+
 async function load() {
   if (!state.id) { location.href = "/"; return; }
   try {
-    const data = await api(`/api/quotations/${encodeURIComponent(state.id)}`);
-    paint(data.quotation);
+    const [record, settings] = await Promise.all([
+      api(`/api/quotations/${encodeURIComponent(state.id)}`),
+      api("/api/settings").catch(() => null),
+    ]);
+    state.settings = settings?.settings || null;
+    /* the desk default is read on every load, so a change in Settings applies here
+       without a stale browser preference getting in the way */
+    state.sendMode = state.settings?.share_mode === "link" ? "link" : "file";
+    paint(record.quotation);
   } catch (error) {
     if (error.status === 401) { location.href = "/"; return; }
     toast(message(error), "error");
     $("statusChip").textContent = "unavailable";
   }
 }
+
+/* ------------------------------------------------------------------- save --- */
 
 async function save(event) {
   event?.preventDefault();
@@ -129,7 +275,7 @@ async function save(event) {
   } catch (error) {
     toast(message(error), "error");
   } finally {
-    button.disabled = false;
+    button.disabled = state.quote?.status === "completed";
   }
 }
 
@@ -154,11 +300,227 @@ async function cancelRecord() {
   }
 }
 
+/* ------------------------------------------------------------ signed copy --- */
+
+async function scanPage() {
+  if (state.busy || !state.quote) return;
+  state.busy = true;
+  const button = $("scanBtn");
+  button.disabled = true;
+  try {
+    const page = await openScanner({ title: "Scan the signed page" });
+    if (!page) return;
+    const form = new FormData();
+    form.append("file", new File([page.blob], "signed-page.jpg", { type: "image/jpeg" }));
+    form.append("width", String(page.width));
+    form.append("height", String(page.height));
+    form.append("source", "scan");
+    const data = await apiUpload(`/api/quotations/${encodeURIComponent(state.id)}/scan`, form);
+    paint(data.quotation);
+    /* the scan is only half the job: say what the next step is */
+    toast("Signed page stored. Send it on WhatsApp below.");
+  } catch (error) {
+    toast(message(error), "error");
+  } finally {
+    state.busy = false;
+    button.disabled = false;
+  }
+}
+
+async function removeScan() {
+  if (!state.quote) return;
+  const okay = await confirmAction({
+    title: "Remove the signed page?",
+    message: "The record keeps its numbers; the stored picture is deleted.",
+    confirm: "Remove the scan",
+  });
+  if (!okay) return;
+  try {
+    await api(`/api/quotations/${encodeURIComponent(state.id)}/scan`, { method: "DELETE" });
+    const data = await api(`/api/quotations/${encodeURIComponent(state.id)}`);
+    paint(data.quotation);
+    toast("Signed page removed.");
+  } catch (error) {
+    toast(message(error), "error");
+  }
+}
+
+/** Mints (or rotates) the public link and reflects it in the payload. */
+async function createShareLink() {
+  if (!state.quote) return null;
+  try {
+    const data = await api(`/api/quotations/${encodeURIComponent(state.id)}/share-link`, { method: "POST" });
+    state.quote = { ...state.quote, share_path: data.share_path, share_token_created_at: data.share_token_created_at };
+    paintSigned(state.quote);
+    return data.share_url || new URL(data.share_path, location.origin).toString();
+  } catch (error) {
+    toast(message(error), "error");
+    return null;
+  }
+}
+
+async function shareLinkButton() {
+  const url = await createShareLink();
+  if (!url) return;
+  const copied = await copyText(url);
+  toast(copied ? "Link created and copied. Any previous link now fails." : "Link created. Copy it from the dialog that follows.");
+  if (!copied) window.prompt("Shareable link", url);
+  if (state.sendMode !== "link") {
+    setSendMode("link");
+  }
+}
+
+/* --------------------------------------------------------------- whatsapp --- */
+
+const caption = (quote) =>
+  `Quotation ${quote.quote_number} — ${quote.model} ${quote.year}, ${quote.currency || "AED"} ${quote.amount}`;
+
+async function copyText(value) {
+  try {
+    await navigator.clipboard.writeText(value);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function openWhatsApp(text) {
+  window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, "_blank", "noopener");
+}
+
+/** The stored picture as a File, so it can go through the OS share sheet. */
+async function scanAsFile() {
+  const scan = state.quote?.scan;
+  if (!scan) return null;
+  const response = await fetch(scan.download_url, { credentials: "same-origin" });
+  if (!response.ok) throw new Error("scan_not_found");
+  const blob = await response.blob();
+  const type = blob.type || scan.content_type || "image/jpeg";
+  const ext = type === "image/png" ? "png" : type === "image/webp" ? "webp" : "jpg";
+  return new File([blob], `${state.quote.quote_number}-signed.${ext}`, { type });
+}
+
+function downloadBlob(file) {
+  const url = URL.createObjectURL(file);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = file.name;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 10000);
+}
+
+async function sendOnWhatsApp() {
+  const quote = state.quote;
+  if (!quote) return;
+  const button = $("sendBtn");
+  button.disabled = true;
+  try {
+    const text = caption(quote);
+
+    if (state.sendMode === "link") {
+      const path = quote.share_path || (await createShareLink());
+      if (!path) return;
+      const url = new URL(path, location.origin).toString();
+      if (navigator.share) {
+        await navigator.share({ title: text, text, url });
+        toast("Shared. Pick the chat in the sheet.");
+        return;
+      }
+      const copied = await copyText(`${text}\n${url}`);
+      openWhatsApp(`${text}\n${url}`);
+      toast(copied ? "WhatsApp opened — the caption and link are pasted." : "WhatsApp opened with the message prefilled.");
+      return;
+    }
+
+    const file = await scanAsFile();
+    if (!file) { toast("Scan the signed page first.", "error"); return; }
+    /* The share sheet is the only way to hand a real file to WhatsApp from a web
+       page: wa.me links carry text only, which is why the fallback below attaches
+       the picture through the download folder instead. */
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      await navigator.share({ files: [file], text });
+      toast("Shared. Pick the chat in the sheet.");
+      return;
+    }
+    downloadBlob(file);
+    await copyText(text);
+    openWhatsApp(text);
+    toast("Picture saved to downloads and the caption copied — attach it in WhatsApp.");
+  } catch (error) {
+    /* closing the OS share sheet is not a failure */
+    if (error?.name === "AbortError") return;
+    toast(message(error), "error");
+  } finally {
+    button.disabled = !state.quote?.scan;
+  }
+}
+
+function setSendMode(mode) {
+  state.sendMode = mode === "link" ? "link" : "file";
+  paintSendMode();
+}
+
+async function downloadScan() {
+  try {
+    const file = await scanAsFile();
+    if (file) downloadBlob(file);
+  } catch (error) {
+    toast(message(error), "error");
+  }
+}
+
+/* -------------------------------------------------------------- workflow ---- */
+
+async function toggleCompleted() {
+  const quote = state.quote;
+  if (!quote) return;
+  const completed = quote.status === "completed";
+  if (!completed) {
+    if (!quote.has_scan) {
+      toast("Scan the signed page first — a completed record must carry its paperwork.", "error");
+      $("scanBtn").focus();
+      return;
+    }
+    const okay = await confirmAction({
+      title: `Mark ${quote.quote_number} completed?`,
+      message: "The record keeps the signed page and its numbers are frozen.",
+      confirm: "Mark completed",
+      danger: false,
+    });
+    if (!okay) return;
+  }
+  try {
+    const data = await api(`/api/quotations/${encodeURIComponent(state.id)}/status`, {
+      method: "PATCH",
+      body: { status: completed ? "issued" : "completed" },
+    });
+    paint(data.quotation);
+    toast(completed ? "Record reopened for changes." : "Record completed. The stamp is on the paperwork.");
+  } catch (error) {
+    toast(message(error), "error");
+  }
+}
+
+/* ------------------------------------------------------------------ bind --- */
+
 $("recordForm").addEventListener("submit", save);
 $("saveBtn").addEventListener("click", save);
 $("printBtn").addEventListener("click", printSheet);
 $("cancelBtn").addEventListener("click", cancelRecord);
 $("reprintBtn").addEventListener("click", refreshPreview);
+$("scanBtn").addEventListener("click", scanPage);
+$("replaceBtn").addEventListener("click", scanPage);
+$("removeScanBtn").addEventListener("click", removeScan);
+$("completeBtn").addEventListener("click", toggleCompleted);
+$("sendBtn").addEventListener("click", sendOnWhatsApp);
+$("shareBtn").addEventListener("click", shareLinkButton);
+$("downloadBtn").addEventListener("click", downloadScan);
+$("sendMode").addEventListener("click", (event) => {
+  const button = event.target.closest("button[data-mode]");
+  if (button) setSendMode(button.dataset.mode);
+});
 window.addEventListener("resize", fitPreview);
 $("preview").addEventListener("load", fitPreview);
 

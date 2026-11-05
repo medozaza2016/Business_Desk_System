@@ -86,6 +86,10 @@
             <input id="searchInput" type="search" placeholder="Number, model, chassis" aria-label="Search quotations">
             <button class="btn ghost small" type="submit">Search</button>
           </form>
+          <div class="segmented" id="ledgerSort" role="group" aria-label="Order the ledger">
+            <button type="button" data-sort="number" aria-pressed="true">No.</button>
+            <button type="button" data-sort="date" aria-pressed="false">Date</button>
+          </div>
           <a class="btn ghost small" id="csvLink" href="#">Export CSV</a>
         </div>
       </header>
@@ -128,6 +132,9 @@
         </button>
         <button class="settings-tab" type="button" data-pane="access">
           <b>Shared access</b><small>passcode rotation</small>
+        </button>
+        <button class="settings-tab" type="button" data-pane="share">
+          <b>WhatsApp hand-off</b><small id="navShareSummary">signed file</small>
         </button>
         <button class="settings-tab" type="button" data-pane="companies">
           <b>Companies</b><small id="navCompanySummary">0 companies</small>
@@ -245,6 +252,30 @@
             <div class="card-actions"><button class="btn primary" type="submit">Rotate passcode</button></div>
           </form>
           <p class="rail-note" id="passcodeNote">Rotating ends every other session immediately; this tab stays signed in.</p>
+        </div>
+      </section>
+
+      <section class="panel settings-pane" data-pane="share" hidden>
+        <div class="card-head"><h2>WhatsApp hand-off</h2><span class="chip" id="shareChip">file</span></div>
+        <div class="card-body">
+          <p class="rail-note lead">What the record page offers first once a signed page is ready to send. Either way the operator can switch the choice for a single send.</p>
+          <div class="choice-list" id="shareModeForm" role="radiogroup" aria-label="Default hand-off">
+            <label class="choice">
+              <input type="radio" name="share_mode" value="file" checked>
+              <span>
+                <b>Attach the signed file</b>
+                <em>WhatsApp opens with the page already attached, so the customer keeps the picture. On a computer the picture downloads and the caption is copied instead.</em>
+              </span>
+            </label>
+            <label class="choice">
+              <input type="radio" name="share_mode" value="link">
+              <span>
+                <b>Send a private link</b>
+                <em>A short <code>/s/…</code> page shows the figures and the signed page. The link can be rotated or revoked from the record.</em>
+              </span>
+            </label>
+          </div>
+          <p class="rail-note" id="shareNote">The desk never sends anything by itself: WhatsApp opens with the message ready and the operator picks the chat.</p>
         </div>
       </section>
 

@@ -87,6 +87,23 @@ A4 sheet. Replace it with the real artwork (A4 @ 150–300 dpi, header/footer al
   that script via a `sha256` CSP hash. Browser → *Save as PDF* is the export path.
 - Company templates can never execute JavaScript: `script-src` allows only the Worker's hash.
 
+## Signed copies and share links
+
+- The signed page is scanned in the browser (`public/scan.js`) and stored in R2 under
+  `scans/<companyId>/<quotationId>-<random>.jpg`; `quotation_scans` holds one row per quotation, so a
+  re-scan replaces the copy and deletes the previous object.
+- The public link is `/s/<32-char token>`; the token lives in `quotations.share_token` and is minted with
+  the first scan. **Rotate** (`POST /api/quotations/:id/share-link`) invalidates every pasted link,
+  **revoke** (`DELETE …/share-link`) removes it. There is no expiry: a link lives until it is rotated,
+  revoked, or the quotation is cancelled.
+- The share page carries `noindex` and `no-referrer`, so it never turns up in a search result and never
+  leaks the desk's own URL to the customer's browser.
+- WhatsApp is opened, never driven: the desk hands the file or the link to the operating system's share
+  sheet (mobile) or to `wa.me` plus a download (desktop). Nothing is sent without the operator picking a
+  chat, and no WhatsApp credentials are stored anywhere.
+- Workflow: completing a record requires a signed page and freezes the numbers. Reopen it from the record
+  header or the ledger's *Reopen* action before correcting anything.
+
 ## Troubleshooting
 
 | Symptom | Cause | Fix |
@@ -97,6 +114,9 @@ A4 sheet. Replace it with the real artwork (A4 @ 150–300 dpi, header/footer al
 | Sheet has no letterhead | `letterhead_background.png` missing or the template's CSS was edited | redeploy `public/`, keep `url("{{letterhead_url}}")` |
 | `has_assets:false` after a deploy | deployed before `public/` existed | run `npm run deploy` again — assets are uploaded with the Worker |
 | Print preview blocked | the page is embedded in another origin | `frame-ancestors 'self'` — open the desk on its own domain |
+| Scanner shows no page outline | flat lighting, or the sheet already fills the frame | keep shooting: a capture without a detected page still straightens the whole frame |
+| *Send on WhatsApp* only downloads | the browser has no `navigator.canShare({files})` (most desktops) | attach the downloaded picture in WhatsApp — the caption is already copied |
+| `/s/<token>` says "no longer active" | token rotated, revoked, or the record cancelled | mint a fresh link from the record page |
 
 ## Recovery
 

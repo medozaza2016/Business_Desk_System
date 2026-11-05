@@ -12,8 +12,11 @@ const state = {
   companyId: null,
   quotes: [],
   search: "",
+  /** "number" (newest serial first) or "date"; the Worker orders the rows */
+  sort: "number",
   templates: [],
   templateEditId: null,
+  settings: null,
   settingsOpen: false,
   settingsPane: "company",
 };
@@ -61,7 +64,11 @@ const humanError = (error) => {
     unsupported_image_type: "Use a PNG, JPEG or WebP image.",
     logo_too_large: "That image is larger than 512 KB. Resize it and try again.",
     logo_not_found: "This company has no logo yet.",
-    storage_unavailable: "Logo storage is not configured on this deployment.",
+    storage_unavailable: "Storage is not configured on this deployment.",
+    quotation_completed: "This record is completed. Reopen it on the record page.",
+    scan_required: "Scan the signed page on the record before completing it.",
+    invalid_share_mode: "Pick one of the two hand-off options.",
+    no_fields_to_update: "Nothing to save.",
   };
   return map[error?.message] || error?.message || "Something went wrong.";
 };
@@ -255,20 +262,29 @@ function renderQuotes() {
   const company = activeCompany();
   const total = state.quotes.length;
   const suffix = state.search ? ` matching “${state.search}”` : "";
+  const order = state.sort === "date" ? "newest date first" : "highest number first";
   $("ledgerMeta").textContent = company
-    ? `${total} record${total === 1 ? "" : "s"}${suffix} · prefix ${company.quotation_prefix || "QA-"} · currency ${company.currency || "AED"}`
+    ? `${total} record${total === 1 ? "" : "s"}${suffix} · ${order} · prefix ${company.quotation_prefix || "QA-"} · currency ${company.currency || "AED"}`
     : "No company configured yet.";
   $("emptyState").hidden = total > 0;
+  paintSort();
 
   for (const quote of state.quotes) {
     const row = document.createElement("tr");
 
     const numberCell = document.createElement("td");
     numberCell.className = "num";
+    const numberWrap = document.createElement("div");
+    numberWrap.className = "num-stack";
     const link = document.createElement("a");
     link.href = `/quote?id=${encodeURIComponent(quote.id)}`;
     link.textContent = quote.quote_number;
-    numberCell.appendChild(link);
+    const mark = document.createElement("span");
+    /* three states, one glance: filed, signed and waiting for the signature */
+    mark.className = `chip ${quote.status === "completed" || quote.has_scan ? "ok" : "off"}`;
+    mark.textContent = quote.status === "completed" ? "completed" : quote.has_scan ? "signed" : "unsigned";
+    numberWrap.append(link, mark);
+    numberCell.appendChild(numberWrap);
     row.appendChild(numberCell);
 
     row.appendChild(rowCell(quote.quote_date_text || quote.quote_date, "date", "Date"));
@@ -298,20 +314,32 @@ function renderQuotes() {
     print.rel = "noopener";
     print.textContent = "Print";
     const separator2 = separator.cloneNode(true);
+    const toggle = document.createElement("button");
+    toggle.type = "button";
+    toggle.textContent = quote.status === "completed" ? "Reopen" : "Complete";
+    toggle.addEventListener("click", () => toggleQuoteStatus(quote));
+    const separator3 = separator.cloneNode(true);
     const remove = document.createElement("button");
     remove.type = "button";
     remove.textContent = "Cancel";
     remove.addEventListener("click", () => cancelQuote(quote));
-    actions.append(open, separator, print, separator2, remove);
+    actions.append(open, separator, print, separator2, toggle, separator3, remove);
     row.appendChild(actions);
 
     body.appendChild(row);
   }
 }
 
+/** The ledger order switch: the number is the paper's own sort key. */
+function paintSort() {
+  for (const button of $("ledgerSort").querySelectorAll("button")) {
+    button.setAttribute("aria-pressed", button.dataset.sort === state.sort ? "true" : "false");
+  }
+}
+
 async function loadQuotes() {
   if (!state.companyId) { state.quotes = []; renderQuotes(); return; }
-  const query = new URLSearchParams({ company_id: state.companyId, limit: "100" });
+  const query = new URLSearchParams({ company_id: state.companyId, limit: "100", sort: state.sort });
   if (state.search) query.set("q", state.search);
   try {
     const data = await api(`/api/quotations?${query.toString()}`);
@@ -319,6 +347,37 @@ async function loadQuotes() {
     renderQuotes();
   } catch (error) {
     if (error.status === 401) return signOut("Your session expired.");
+    toast(humanError(error), "error");
+  }
+}
+
+/** Complete or reopen straight from the ledger; completing needs the signed page. */
+async function toggleQuoteStatus(quote) {
+  const completed = quote.status === "completed";
+  if (!completed && !quote.has_scan) {
+    /* the scan lives on the record page, so that is where this has to happen */
+    toast("Scan the signed page on the record first.", "error");
+    location.href = `/quote?id=${encodeURIComponent(quote.id)}`;
+    return;
+  }
+  const okay = await confirmAction({
+    title: completed ? `Reopen ${quote.quote_number}?` : `Mark ${quote.quote_number} completed?`,
+    message: completed
+      ? "The record becomes editable again."
+      : "The record keeps its signed page and its numbers are frozen.",
+    confirm: completed ? "Reopen" : "Mark completed",
+    cancel: "Keep",
+    danger: false,
+  });
+  if (!okay) return;
+  try {
+    await api(`/api/quotations/${encodeURIComponent(quote.id)}/status`, {
+      method: "PATCH",
+      body: { status: completed ? "issued" : "completed" },
+    });
+    toast(completed ? `${quote.quote_number} reopened` : `${quote.quote_number} completed`);
+    await loadQuotes();
+  } catch (error) {
     toast(humanError(error), "error");
   }
 }
@@ -583,6 +642,42 @@ async function createCompany(event) {
     toast(`${data.company.name} added with the default A4 template.`);
   } catch (error) {
     toast(humanError(error), "error");
+  }
+}
+
+/* ---- hand-off setting ---- */
+
+/** The desk-wide default for the WhatsApp step on the record page. */
+async function loadSettings() {
+  try {
+    const data = await api("/api/settings");
+    state.settings = data.settings || null;
+  } catch {
+    state.settings = null;
+  }
+  paintShareSettings();
+}
+
+function paintShareSettings() {
+  const mode = state.settings?.share_mode === "link" ? "link" : "file";
+  for (const input of $("shareModeForm").querySelectorAll("input[name=share_mode]")) {
+    input.checked = input.value === mode;
+  }
+  $("shareChip").textContent = mode === "link" ? "link" : "signed file";
+  $("navShareSummary").textContent = mode === "link" ? "private link" : "signed file";
+}
+
+async function saveShareMode(input) {
+  try {
+    const data = await api("/api/settings", { method: "PATCH", body: { share_mode: input.value } });
+    state.settings = data.settings || state.settings;
+    paintShareSettings();
+    toast(input.value === "link"
+      ? "Record pages now offer a private link first."
+      : "Record pages now attach the signed file first.");
+  } catch (error) {
+    toast(humanError(error), "error");
+    paintShareSettings();
   }
 }
 
@@ -859,7 +954,7 @@ async function rotatePasscode(event) {
 
 /* ------------------------------------------------------------------ views --- */
 
-const SETTINGS_PANES = ["company", "template", "access", "companies"];
+const SETTINGS_PANES = ["company", "template", "access", "share", "companies"];
 
 /** Side-panel tabs: one pane at a time, mirrored in ?pane= so links can deep-link. */
 function showSettingsPane(name, { remember = true } = {}) {
@@ -939,6 +1034,7 @@ async function boot() {
   $("gate").hidden = true;
   await loadCompanies();
   $("quoteDate").value = todayLocal();
+  await loadSettings();
   await refreshNextNumber();
   await loadQuotes();
   const wantsSettings = new URLSearchParams(location.search).get("view") === "settings";
@@ -976,6 +1072,17 @@ function bind() {
     if (tab) showSettingsPane(tab.dataset.pane);
   });
   $("passcodeForm").addEventListener("submit", rotatePasscode);
+  $("ledgerSort").addEventListener("click", (event) => {
+    const button = event.target.closest("button[data-sort]");
+    if (!button || button.dataset.sort === state.sort) return;
+    state.sort = button.dataset.sort === "date" ? "date" : "number";
+    paintSort();
+    loadQuotes();
+  });
+  $("shareModeForm").addEventListener("change", (event) => {
+    const input = event.target.closest("input[name=share_mode]");
+    if (input && input.checked) saveShareMode(input);
+  });
 
   let searchTimer = null;
   $("searchInput").addEventListener("input", () => {

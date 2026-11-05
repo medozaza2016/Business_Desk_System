@@ -1,4 +1,5 @@
 import DEFAULT_TEMPLATE from "../templates/default-quotation.html";
+import { renderSharePage, renderShareMissing } from "./share-page.js";
 
 /* --------------------------------------------------------------------------
    Challenger Quotation Platform - Cloudflare Worker
@@ -19,11 +20,22 @@ const MAX_QUOTATION_COMMENTS = 300;
 const LETTERHEAD_URL = "/letterhead_background.png";
 const MAX_LOGO_BYTES = 512 * 1024;
 const LOGO_PREFIX = "logos/";
+/* A signed copy is a phone photo of a sheet: 4 MB covers a 12 Mpx JPEG at full quality. */
+const MAX_SCAN_BYTES = 4 * 1024 * 1024;
+const SCAN_PREFIX = "scans/";
+/* The WhatsApp hand-off default, stored in the settings table like the passcode row:
+   "file" attaches the scan through the OS share sheet, "link" sends /s/<token>. */
+const SHARE_MODE_KEY = "quotation_share_mode";
+const SHARE_MODES = ["file", "link"];
+const DEFAULT_SHARE_MODE = "file";
+/* 24 random bytes -> 32 base64url characters: far too many to guess, short enough to paste. */
+const SHARE_TOKEN_BYTES = 24;
+const QUOTATION_STATUSES = ["issued", "completed"];
 /* A template may print {{logo_url}} even when the company has no logo. Pointing at a
    1x1 transparent GIF keeps the sheet clean instead of showing a broken-image icon. */
 const TRANSPARENT_PIXEL = "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
-/** Accepted logo formats — the declared type must also match the file signature. */
-const LOGO_TYPES = [
+/** Accepted image formats — the declared type must also match the file signature. */
+const IMAGE_TYPES = [
   { mime: "image/png", ext: "png", test: (b) => b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47 },
   { mime: "image/jpeg", ext: "jpg", test: (b) => b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff },
   {
@@ -370,6 +382,38 @@ const handleRotatePasscode = async (request, env, ctx, session) => {
   return json({ rotated: true, rotated_at: rotatedAt }, 200, { "set-cookie": sessionCookie(token, request, env) });
 };
 
+/* ============================== settings ============================== */
+
+/**
+ * The WhatsApp hand-off default. Stored as a plain settings row so it survives a
+ * redeploy without a new binding, and read back with the session settings.
+ */
+const readShareMode = async (env) => {
+  const value = await settingsRead(env, SHARE_MODE_KEY);
+  return SHARE_MODES.includes(value) ? value : DEFAULT_SHARE_MODE;
+};
+
+const settingsPayload = async (env) => ({
+  share_mode: await readShareMode(env),
+  session_hours: sessionHours(env),
+  /* the passcode is global (one settings row), so this timestamp is global too */
+  passcode_updated_at: (await readAuth(env))?.updated_at || null,
+});
+
+const handleSettingsGet = async (env) => json({ settings: await settingsPayload(env) });
+
+const handleSettingsPatch = async (request, env, ctx, session) => {
+  const body = await bodyJson(request);
+  if (!body) return json({ error: "invalid_body" }, 400);
+  if (body.share_mode === undefined) return json({ error: "no_fields_to_update" }, 400);
+  if (!SHARE_MODES.includes(body.share_mode)) {
+    return json({ error: "invalid_share_mode", accepted: SHARE_MODES }, 400);
+  }
+  await settingsWrite(env, SHARE_MODE_KEY, body.share_mode);
+  audit(env, ctx, session.name, "settings.updated", "settings", SHARE_MODE_KEY, { share_mode: body.share_mode });
+  return json({ settings: await settingsPayload(env) });
+};
+
 /* ============================ companies ============================ */
 
 const COMPANY_COLUMNS =
@@ -488,12 +532,12 @@ const handleCompanyDeactivate = async (env, ctx, session, companyId) => {
 /* ------------------------------ company logo ------------------------------ */
 
 /**
- * Logo bytes live in R2 (binding ASSETS), never in D1: the row only keeps the key.
+ * Logo and scan bytes live in R2 (binding ASSETS), never in D1: the row only keeps the key.
  * The signature check runs on the bytes themselves, so a mislabelled upload can
  * neither sneak a script through nor be served with a type the browser sniffs.
  */
-const sniffLogoType = (bytes, declared) => {
-  const match = LOGO_TYPES.find((type) => type.test(bytes));
+const sniffImageType = (bytes, declared) => {
+  const match = IMAGE_TYPES.find((type) => type.test(bytes));
   if (!match) return null;
   if (declared && declared !== match.mime) return null;
   return match;
@@ -534,8 +578,8 @@ const handleCompanyLogoUpload = async (request, env, ctx, session, companyId) =>
   }
   if (file.size > MAX_LOGO_BYTES) return json({ error: "logo_too_large", max_bytes: MAX_LOGO_BYTES }, 413);
   const bytes = new Uint8Array(await file.arrayBuffer());
-  const type = sniffLogoType(bytes, file.type || "");
-  if (!type) return json({ error: "unsupported_image_type", accepted: LOGO_TYPES.map((t) => t.mime) }, 415);
+  const type = sniffImageType(bytes, file.type || "");
+  if (!type) return json({ error: "unsupported_image_type", accepted: IMAGE_TYPES.map((t) => t.mime) }, 415);
   const key = `${LOGO_PREFIX}${companyId}-${randomToken(6)}.${type.ext}`;
   await env.ASSETS.put(key, bytes, {
     httpMetadata: { contentType: type.mime },
@@ -729,23 +773,52 @@ const decorate = (row) => ({
  */
 const commentsField = (value) => text(value, MAX_QUOTATION_COMMENTS).replace(/\s+/g, " ").trim();
 
+/**
+ * The ledger lists by quotation number, newest first: the number is what people
+ * quote on the phone and what the paper in their hand says, so a record issued
+ * late (or back-dated) still lands where its serial says it belongs. `?sort=date`
+ * keeps the old calendar order — and stays what the CSV export uses.
+ */
+const LEDGER_ORDER = {
+  number: "q.quote_number DESC",
+  date: "q.quote_date DESC, q.created_at DESC",
+};
+
 const handleQuotationList = async (env, url) => {
   const companyId = url.searchParams.get("company_id");
   if (!companyId) return json({ error: "company_id_required" }, 400);
   const search = (url.searchParams.get("q") || "").trim().slice(0, 80);
   const limit = Math.min(Math.max(Number(url.searchParams.get("limit")) || 50, 1), 100);
-  const like = `%${search}%`;
+  const sort = LEDGER_ORDER[url.searchParams.get("sort")] ? url.searchParams.get("sort") : "number";
+  /* the scan is joined here (not per row) so the ledger can mark a signed record
+     without a second round-trip: `scan_created_at` is the flag */
   const rows = await env.DB.prepare(
-    "SELECT id,quote_number,quote_date,model,year,chassis,amount_cents,amount_words,created_at FROM quotations " +
-    "WHERE company_id=? AND deleted_at IS NULL " +
-    "AND (quote_number LIKE ? OR model LIKE ? OR chassis LIKE ? OR year LIKE ?) " +
-    "ORDER BY quote_date DESC, created_at DESC LIMIT ?"
-  ).bind(companyId, like, like, like, like, limit).all();
+    "SELECT q.id,q.quote_number,q.quote_date,q.model,q.year,q.chassis,q.amount_cents,q.amount_words," +
+    "q.status,q.completed_at,q.created_at,s.created_at AS scan_created_at FROM quotations q " +
+    "LEFT JOIN quotation_scans s ON s.quotation_id=q.id " +
+    "WHERE q.company_id=? AND q.deleted_at IS NULL " +
+    "AND (q.quote_number LIKE ? OR q.model LIKE ? OR q.chassis LIKE ? OR q.year LIKE ?) " +
+    `ORDER BY ${LEDGER_ORDER[sort]} LIMIT ?`
+  ).bind(companyId, `%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`, limit).all();
   const total = await env.DB.prepare(
     "SELECT COUNT(*) AS n FROM quotations WHERE company_id=? AND deleted_at IS NULL"
   ).bind(companyId).first();
-  return json({ quotations: (rows.results || []).map(decorate), total: Number(total?.n || 0) });
+  return json({
+    quotations: (rows.results || []).map((row) => {
+      const { scan_created_at: scannedAt, ...rest } = row;
+      return {
+        ...decorate(rest),
+        status: rest.status === "completed" ? "completed" : "issued",
+        completed_at: rest.completed_at || null,
+        signed: Boolean(scannedAt),
+        has_scan: Boolean(scannedAt),
+      };
+    }),
+    total: Number(total?.n || 0),
+    sort,
+  });
 };
+
 
 /** Read-only numbering preview: never advances the sequence. */
 const peekNextNumber = async (env, company, date) => {
@@ -836,35 +909,58 @@ const handleQuotationCreate = async (request, env, ctx, session) => {
       quote_date_text: formatDateDMY(date), model, year, chassis, comments,
       amount_cents: cents, amount: formatMoney(cents), amount_words: amountWords,
       currency: company.currency || "AED",
+      status: "issued", completed_at: null, signed: false, has_scan: false, scan: null,
+      share_path: null, share_token_created_at: null,
     },
   }, 201);
 };
 
 const QUOTATION_COLUMNS =
-  "id,company_id,template_id,quote_number,quote_date,model,year,chassis,comments,amount_cents,amount_words,company_snapshot_json,created_at,updated_at";
+  "id,company_id,template_id,quote_number,quote_date,model,year,chassis,comments,amount_cents,amount_words," +
+  "company_snapshot_json,status,completed_at,share_token,share_token_created_at,created_at,updated_at";
 
 const quotationById = (env, id) =>
   env.DB.prepare(`SELECT ${QUOTATION_COLUMNS} FROM quotations WHERE id=? AND deleted_at IS NULL`).bind(id).first();
 
-const handleQuotationGet = async (env, id) => {
+/**
+ * The full record payload: decorated row + workflow block + live company.
+ * The raw token never leaves the Worker — it travels as `share_path` only, so a
+ * payload that lands in a screenshot still cannot hand out a link.
+ */
+const quotationPayload = async (env, id) => {
   const row = await quotationById(env, id);
-  if (!row) return json({ error: "quotation_not_found" }, 404);
-  const company = await env.DB.prepare(`SELECT ${COMPANY_COLUMNS} FROM companies WHERE id=?`).bind(row.company_id).first();
+  if (!row) return null;
+  const [company, scan] = await Promise.all([
+    env.DB.prepare(`SELECT ${COMPANY_COLUMNS} FROM companies WHERE id=?`).bind(row.company_id).first(),
+    scanRow(env, id),
+  ]);
   const snapshot = parseJson(row.company_snapshot_json);
-  return json({
+  const rest = { ...row };
+  /* stripped, not renamed: the token is a credential, `share_path` is the pointer */
+  delete rest.share_token;
+  return {
     quotation: {
-      ...decorate(row),
+      ...decorate(rest),
+      ...workflowPayload(row, scan),
       currency: snapshot.currency || company?.currency || "AED",
       company: company || null,
     },
-  });
+  };
 };
+
+const handleQuotationGet = async (env, id) => {
+  const payload = await quotationPayload(env, id);
+  return payload ? json(payload) : json({ error: "quotation_not_found" }, 404);
+};
+
 
 const handleQuotationPatch = async (request, env, ctx, session, id) => {
   const body = await bodyJson(request);
   if (!body) return json({ error: "invalid_body" }, 400);
   const row = await quotationById(env, id);
   if (!row) return json({ error: "quotation_not_found" }, 404);
+  /* completed means "filed": the numbers on the paper cannot drift from the record */
+  if (row.status === "completed") return json({ error: "quotation_completed" }, 409);
   const sets = [];
   const values = [];
   if (typeof body.quote_date === "string") {
@@ -908,6 +1004,10 @@ const handleQuotationPatch = async (request, env, ctx, session, id) => {
 };
 
 const handleQuotationCancel = async (env, ctx, session, id) => {
+  const row = await quotationById(env, id);
+  if (!row) return json({ error: "quotation_not_found" }, 404);
+  /* a completed record is filed paperwork: reopening it is the way to change it */
+  if (row.status === "completed") return json({ error: "quotation_completed" }, 409);
   const result = await env.DB.prepare(
     "UPDATE quotations SET deleted_at=CURRENT_TIMESTAMP WHERE id=? AND deleted_at IS NULL"
   ).bind(id).run();
@@ -915,6 +1015,213 @@ const handleQuotationCancel = async (env, ctx, session, id) => {
   audit(env, ctx, session.name, "quotation.cancelled", "quotation", id, {});
   return json({ cancelled: true });
 };
+
+/* --------------------------- signed copy (scan) --------------------------- */
+
+/**
+ * The signed sheet is one page per quotation: a re-scan replaces the stored copy,
+ * the R2 key changes so caches (and the browser's own image cache) follow, and the
+ * old object is deleted instead of being left unreachable in the bucket.
+ */
+const SCAN_COLUMNS = "quotation_id,company_id,r2_key,content_type,bytes,width,height,source,created_at";
+
+const scanRow = (env, quotationId) =>
+  env.DB.prepare(`SELECT ${SCAN_COLUMNS} FROM quotation_scans WHERE quotation_id=?`).bind(quotationId).first();
+
+/** URL version tag: the random suffix already in the key, so it changes on every upload. */
+const scanVersion = (scan) => encodeURIComponent(String(scan.r2_key || "").split("/").pop() || scan.created_at || "");
+
+/** Public shape of a signed copy — URLs and measurements, never the R2 key. */
+const scanPayload = (quotationId, scan) => {
+  if (!scan) return null;
+  const base = `/api/quotations/${encodeURIComponent(quotationId)}/scan`;
+  const version = scanVersion(scan);
+  return {
+    url: `${base}?v=${version}`,
+    download_url: `${base}?v=${version}&download=1`,
+    content_type: scan.content_type,
+    bytes: Number(scan.bytes) || 0,
+    width: Number(scan.width) || 0,
+    height: Number(scan.height) || 0,
+    source: scan.source,
+    created_at: scan.created_at,
+  };
+};
+
+/** The workflow block every quotation payload carries. */
+const workflowPayload = (row, scan) => ({
+  status: row.status === "completed" ? "completed" : "issued",
+  completed_at: row.completed_at || null,
+  signed: Boolean(scan),
+  has_scan: Boolean(scan),
+  scan: scanPayload(row.id, scan),
+  /* relative on purpose: the record page knows its own origin, and a pasted link
+     must never inherit the hostname of some internal preview */
+  share_path: row.share_token ? sharePath(row.share_token) : null,
+  share_token_created_at: row.share_token_created_at || null,
+});
+
+/** Relative share path; the API additionally returns it absolute for copy-paste. */
+const sharePath = (token) => `/s/${token}`;
+
+const shareUrlFor = (request, token) => (token ? new URL(sharePath(token), request.url).toString() : null);
+/* ------------------------------ scan routes ------------------------------ */
+
+const handleQuotationScanGet = async (env, id, url) => {
+  const row = await quotationById(env, id);
+  if (!row) return json({ error: "quotation_not_found" }, 404);
+  const scan = await scanRow(env, id);
+  if (!scan) return json({ error: "scan_not_found" }, 404);
+  if (!env.ASSETS) return json({ error: "storage_unavailable" }, 503);
+  const object = await env.ASSETS.get(scan.r2_key);
+  if (!object) return json({ error: "scan_not_found" }, 404);
+  return imageResponse(object, scan, url, `${row.quote_number || "quotation"}-signed`);
+};
+
+/**
+ * One response shape for every stored picture (desk route and public link), so a
+ * scan is served with the same type, cache rules and sandboxing in both places.
+ */
+const imageResponse = (object, scan, url, baseName) => {
+  const download = ["1", "true", "yes"].includes((url.searchParams.get("download") || "").toLowerCase());
+  const ext = scan.content_type === "image/png" ? "png" : scan.content_type === "image/webp" ? "webp" : "jpg";
+  const name = `${String(baseName).replace(/[^A-Za-z0-9._-]+/g, "-")}.${ext}`;
+  return new Response(object.body, {
+    headers: {
+      "content-type": scan.content_type || "image/jpeg",
+      "cache-control": "private, max-age=31536000, immutable",
+      etag: `"${scanVersion(scan)}"`,
+      "content-disposition": `${download ? "attachment" : "inline"}; filename="${name}"`,
+      "x-content-type-options": "nosniff",
+      /* a scan is a picture of paperwork, never a document: no scripts, no framing */
+      "content-security-policy": "default-src 'none'; sandbox",
+    },
+  });
+};
+
+
+/**
+ * Stores the page photographed (or corrected) on the phone. The bytes normally
+ * arrive from the in-app scanner as a JPEG, but the signature is verified anyway so
+ * a mislabelled upload can never be stored — or served — under the wrong type.
+ */
+const handleQuotationScanUpload = async (request, env, ctx, session, id) => {
+  const row = await quotationById(env, id);
+  if (!row) return json({ error: "quotation_not_found" }, 404);
+  if (!env.ASSETS) return json({ error: "storage_unavailable" }, 503);
+  let form;
+  try {
+    form = await request.formData();
+  } catch {
+    return json({ error: "invalid_body" }, 400);
+  }
+  const file = form.get("file");
+  if (!file || typeof file === "string" || typeof file.arrayBuffer !== "function") {
+    return json({ error: "scan_file_required" }, 400);
+  }
+  if (file.size > MAX_SCAN_BYTES) return json({ error: "scan_too_large", max_bytes: MAX_SCAN_BYTES }, 413);
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  const type = sniffImageType(bytes, file.type || "");
+  if (!type) return json({ error: "unsupported_image_type", accepted: IMAGE_TYPES.map((t) => t.mime) }, 415);
+
+  const width = Math.min(Math.max(Number(form.get("width")) || 0, 0), 20000);
+  const height = Math.min(Math.max(Number(form.get("height")) || 0, 0), 20000);
+  const source = text(form.get("source"), 20) || "scan";
+  const previous = await scanRow(env, id);
+  const key = `${SCAN_PREFIX}${row.company_id}/${id}-${randomToken(6)}.${type.ext}`;
+
+  await env.ASSETS.put(key, bytes, {
+    httpMetadata: { contentType: type.mime },
+    customMetadata: { quotation_id: id, company_id: row.company_id },
+  });
+  await env.DB.prepare(
+    "INSERT INTO quotation_scans(quotation_id,company_id,r2_key,content_type,bytes,width,height,source) " +
+    "VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(quotation_id) DO UPDATE SET " +
+    "company_id=excluded.company_id,r2_key=excluded.r2_key,content_type=excluded.content_type," +
+    "bytes=excluded.bytes,width=excluded.width,height=excluded.height,source=excluded.source," +
+    "created_at=CURRENT_TIMESTAMP"
+  ).bind(id, row.company_id, key, type.mime, bytes.length, width, height, source).run();
+  /* the token is minted with the first signed copy: a link to a quotation that has
+     nothing to show is not worth sending, and rotating one stays an explicit act */
+  if (!row.share_token) {
+    await env.DB.prepare(
+      "UPDATE quotations SET share_token=?, share_token_created_at=CURRENT_TIMESTAMP, updated_at=CURRENT_TIMESTAMP WHERE id=?"
+    ).bind(randomToken(SHARE_TOKEN_BYTES), id).run();
+  }
+  if (previous && previous.r2_key && previous.r2_key !== key) {
+    try { await env.ASSETS.delete(previous.r2_key); } catch { /* the new copy is already live */ }
+  }
+  audit(env, ctx, session.name, "quotation.scan_uploaded", "quotation", id, {
+    content_type: type.mime, bytes: bytes.length, replaced: Boolean(previous), source,
+  });
+  return json(await quotationPayload(env, id), previous ? 200 : 201);
+};
+
+const handleQuotationScanDelete = async (env, ctx, session, id) => {
+  const row = await quotationById(env, id);
+  if (!row) return json({ error: "quotation_not_found" }, 404);
+  const scan = await scanRow(env, id);
+  if (!scan) return json({ removed: false });
+  await env.DB.prepare("DELETE FROM quotation_scans WHERE quotation_id=?").bind(id).run();
+  if (env.ASSETS) {
+    try { await env.ASSETS.delete(scan.r2_key); } catch { /* the row is already clear */ }
+  }
+  audit(env, ctx, session.name, "quotation.scan_removed", "quotation", id, {});
+  return json({ removed: true });
+};
+
+/* ------------------------------ workflow ------------------------------ */
+
+/** Open or close a record — closing it is what "the deal is done" means for the desk. */
+const handleQuotationStatus = async (request, env, ctx, session, id) => {
+  const body = await bodyJson(request);
+  if (!body) return json({ error: "invalid_body" }, 400);
+  if (!QUOTATION_STATUSES.includes(body.status)) {
+    return json({ error: "invalid_status", accepted: QUOTATION_STATUSES }, 400);
+  }
+  const row = await quotationById(env, id);
+  if (!row) return json({ error: "quotation_not_found" }, 404);
+  if (body.status === "completed") {
+    /* a completed record claims the paperwork is filed, so there must be paperwork */
+    const scan = await scanRow(env, id);
+    if (!scan) return json({ error: "scan_required" }, 409);
+  }
+  await env.DB.prepare(
+    "UPDATE quotations SET status=?, completed_at=?, updated_at=CURRENT_TIMESTAMP WHERE id=?"
+  ).bind(body.status, body.status === "completed" ? new Date().toISOString() : null, id).run();
+  audit(env, ctx, session.name,
+    body.status === "completed" ? "quotation.completed" : "quotation.reopened", "quotation", id, {});
+  return handleQuotationGet(env, id);
+};
+
+/** Mints (or rotates) the public link. Rotating invalidates every previously pasted URL. */
+const handleShareLinkCreate = async (request, env, ctx, session, id) => {
+  const row = await quotationById(env, id);
+  if (!row) return json({ error: "quotation_not_found" }, 404);
+  const token = randomToken(SHARE_TOKEN_BYTES);
+  await env.DB.prepare(
+    "UPDATE quotations SET share_token=?, share_token_created_at=CURRENT_TIMESTAMP, updated_at=CURRENT_TIMESTAMP WHERE id=?"
+  ).bind(token, id).run();
+  audit(env, ctx, session.name,
+    row.share_token ? "quotation.share_link_rotated" : "quotation.share_link_created", "quotation", id, {});
+  return json({
+    share_path: sharePath(token),
+    share_url: shareUrlFor(request, token),
+    share_token_created_at: new Date().toISOString(),
+  }, row.share_token ? 200 : 201);
+};
+
+const handleShareLinkRevoke = async (env, ctx, session, id) => {
+  const row = await quotationById(env, id);
+  if (!row) return json({ error: "quotation_not_found" }, 404);
+  await env.DB.prepare(
+    "UPDATE quotations SET share_token=NULL, share_token_created_at=NULL, updated_at=CURRENT_TIMESTAMP WHERE id=?"
+  ).bind(id).run();
+  audit(env, ctx, session.name, "quotation.share_link_revoked", "quotation", id, {});
+  return json({ share_path: null, share_url: null, share_token_created_at: null });
+};
+
+
 
 /* ============================== print ============================== */
 
@@ -1009,6 +1316,97 @@ const handlePrint = async (env, url, id) => {
   });
 };
 
+/* ============================ public share ============================ */
+
+/**
+ * A share token is a bearer credential in a URL, so it is matched exactly and only
+ * ever resolves a live quotation: revoking the token, cancelling the record or
+ * rotating the link all make the same 404 page appear.
+ */
+const shareRowFor = (env, token) =>
+  env.DB.prepare(
+    "SELECT q.*, c.name AS company_name, c.legal_name AS company_legal_name, " +
+    "c.legal_name_ar AS company_legal_name_ar, c.phone AS company_phone, c.email AS company_email, " +
+    "c.logo_key AS company_logo_key FROM quotations q JOIN companies c ON c.id=q.company_id " +
+    "WHERE q.share_token=? AND q.deleted_at IS NULL"
+  ).bind(token).first();
+
+const SHARE_TOKEN_PATTERN = /^[A-Za-z0-9_-]{16,64}$/;
+
+const htmlResponse = (body, status = 200) =>
+  new Response(body, {
+    status,
+    headers: {
+      "content-type": "text/html; charset=utf-8",
+      "cache-control": "no-store",
+      /* inline styles only: the page is one document with one image */
+      "content-security-policy": [
+        "default-src 'none'",
+        "img-src 'self' data:",
+        "style-src 'unsafe-inline'",
+        "base-uri 'none'",
+        "form-action 'none'",
+        "frame-ancestors 'none'",
+      ].join("; "),
+      "x-content-type-options": "nosniff",
+      /* a customer link is nobody's search result, and it never leaks its referrer */
+      "x-robots-tag": "noindex, nofollow, noarchive",
+      "referrer-policy": "no-referrer",
+    },
+  });
+
+const handleSharePage = async (request, env, token) => {
+  const row = SHARE_TOKEN_PATTERN.test(token) ? await shareRowFor(env, token) : null;
+  if (!row) return htmlResponse(renderShareMissing(), 404);
+  const scan = await scanRow(env, row.id);
+  const snapshot = parseJson(row.company_snapshot_json);
+  const origin = new URL(request.url).origin;
+  const base = origin + sharePath(token);
+  return htmlResponse(renderSharePage({
+    quotation: {
+      quote_number: row.quote_number,
+      quote_date_text: formatDateDMY(row.quote_date),
+      model: row.model,
+      year: row.year,
+      chassis: row.chassis,
+      amount: formatMoney(row.amount_cents),
+      currency: snapshot.currency || "AED",
+      amount_words: row.amount_words,
+      comments: commentsField(row.comments || ""),
+      status: row.status === "completed" ? "completed" : "issued",
+    },
+    company: {
+      name: row.company_name || "",
+      legal_name: snapshot.legal_name || row.company_legal_name || row.company_name || "",
+      legal_name_ar: snapshot.legal_name_ar || row.company_legal_name_ar || "",
+      phone: snapshot.phone || row.company_phone || "",
+      email: snapshot.email || row.company_email || "",
+    },
+    scan: scan ? { bytes: Number(scan.bytes) || 0, width: Number(scan.width) || 0, height: Number(scan.height) || 0 } : null,
+    links: { sheet: `${base}/sheet`, image: `${base}/scan`, download: `${base}/scan?download=1` },
+  }));
+};
+
+/** The signed picture behind a token. Public by design; unguessable by construction. */
+const handleShareScan = async (env, url, token) => {
+  const row = SHARE_TOKEN_PATTERN.test(token) ? await shareRowFor(env, token) : null;
+  if (!row) return json({ error: "not_found" }, 404);
+  const scan = await scanRow(env, row.id);
+  if (!scan) return json({ error: "scan_not_found" }, 404);
+  if (!env.ASSETS) return json({ error: "storage_unavailable" }, 503);
+  const object = await env.ASSETS.get(scan.r2_key);
+  if (!object) return json({ error: "scan_not_found" }, 404);
+  return imageResponse(object, scan, url, `${row.quote_number}-signed`);
+};
+
+/** The A4 sheet, printed from the same snapshot the desk prints. */
+const handleShareSheet = async (env, url, token) => {
+  const row = SHARE_TOKEN_PATTERN.test(token) ? await shareRowFor(env, token) : null;
+  if (!row) return json({ error: "not_found" }, 404);
+  return handlePrint(env, url, row.id);
+};
+
+
 /* ============================== export ============================== */
 
 const csvCell = (value) => `"${String(value ?? "").replace(/"/g, '""')}"`;
@@ -1020,7 +1418,7 @@ const handleCsvExport = async (env, url) => {
   if (!company) return json({ error: "company_not_found" }, 404);
   const rows = await env.DB.prepare(
     "SELECT quote_number,quote_date,model,year,chassis,comments,amount_cents,amount_words,created_at " +
-    "FROM quotations WHERE company_id=? AND deleted_at IS NULL ORDER BY quote_date DESC, created_at DESC"
+    "FROM quotations WHERE company_id=? AND deleted_at IS NULL ORDER BY quote_number DESC"
   ).bind(companyId).all();
   const lines = ["quotation,date,model,year,chassis,comments,amount,currency,amount_words,created"];
   for (const row of rows.results || []) {
@@ -1040,7 +1438,7 @@ const handleCsvExport = async (env, url) => {
 
 /* ============================== router ============================== */
 
-const KNOWN_RESOURCES = new Set(["companies", "templates", "quotations", "export", "auth"]);
+const KNOWN_RESOURCES = new Set(["companies", "templates", "quotations", "export", "auth", "settings"]);
 
 const handleHealth = async (env) => {
   try {
@@ -1113,7 +1511,25 @@ async function route(request, env, ctx, url) {
     if (id && !action && method === "PATCH") return handleQuotationPatch(request, env, ctx, session, id);
     if (id && !action && method === "DELETE") return handleQuotationCancel(env, ctx, session, id);
     if (id && action === "print" && method === "GET") return handlePrint(env, url, id);
+    if (id && action === "scan" && !child) {
+      if (method === "GET") return handleQuotationScanGet(env, id, url);
+      if (method === "POST") return handleQuotationScanUpload(request, env, ctx, session, id);
+      if (method === "DELETE") return handleQuotationScanDelete(env, ctx, session, id);
+    }
+    if (id && action === "status" && !child && method === "PATCH") {
+      return handleQuotationStatus(request, env, ctx, session, id);
+    }
+    if (id && action === "share-link" && !child) {
+      if (method === "POST") return handleShareLinkCreate(request, env, ctx, session, id);
+      if (method === "DELETE") return handleShareLinkRevoke(env, ctx, session, id);
+    }
   }
+
+  if (resource === "settings" && !id) {
+    if (method === "GET") return handleSettingsGet(env);
+    if (method === "PATCH") return handleSettingsPatch(request, env, ctx, session);
+  }
+
 
   if (resource === "export" && id === "quotations.csv" && method === "GET") return handleCsvExport(env, url);
 
@@ -1123,11 +1539,34 @@ async function route(request, env, ctx, url) {
 export default {
   /**
    * @param {Request} request
-   * @param {{DB:D1Database,ASSETS?:R2Bucket,SESSION_HOURS?:string}} env
+   * @param {{DB:D1Database,ASSETS?:R2Bucket,STATIC?:Fetcher,SESSION_HOURS?:string}} env
    * @param {ExecutionContext} ctx
    */
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
+
+    /* Customer links live outside /api/ on purpose: no cookie, no JSON, one document. */
+    if (url.pathname === "/s" || url.pathname.startsWith("/s/")) {
+      if (request.method !== "GET" && request.method !== "HEAD") {
+        return json({ error: "method_not_allowed" }, 405);
+      }
+      const [token, action, ...rest] = url.pathname.slice("/s/".length).split("/").filter(Boolean);
+      if (rest.length) return json({ error: "not_found" }, 404);
+      try {
+        if (action === "scan") return await handleShareScan(env, url, token || "");
+        if (action === "sheet") return await handleShareSheet(env, url, token || "");
+        if (action) return json({ error: "not_found" }, 404);
+        return await handleSharePage(request, env, token || "");
+      } catch (error) {
+        console.error(JSON.stringify({
+          event: "share_page_failed",
+          token_length: String(token || "").length,
+          message: error?.message || String(error),
+        }));
+        return htmlResponse(renderShareMissing(), 500);
+      }
+    }
+
     if (!url.pathname.startsWith("/api/")) return json({ error: "not_found" }, 404);
     if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: { allow: "GET, POST, PATCH, DELETE, OPTIONS" } });
     try {

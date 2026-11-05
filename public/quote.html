@@ -29,13 +29,68 @@
         <div>Vehicle<b id="metaVehicle">—</b></div>
         <div>Chassis<b id="metaChassis">—</b></div>
         <div>Estimated value<b id="metaValue">—</b></div>
+        <div>Paperwork<b id="metaPaperwork">—</b></div>
       </div>
     </div>
     <div class="record-actions">
       <a class="btn ghost small" id="previewTab" href="#" target="_blank" rel="noopener">Open sheet</a>
+      <button class="btn ghost small" id="completeBtn" type="button">Mark completed</button>
       <button class="btn danger small" id="cancelBtn" type="button">Cancel record</button>
     </div>
   </header>
+
+  <!-- The signed copy is the point of this page: it sits above the edit form,
+       at full width, and carries the send step. -->
+  <section class="signed" id="signedCard" aria-labelledby="signedHeading">
+    <div class="signed-head">
+      <div>
+        <p class="eyebrow">Paperwork</p>
+        <h2 class="signed-title" id="signedHeading">Signed copy</h2>
+      </div>
+      <span class="chip" id="signedChip">checking</span>
+    </div>
+
+    <div class="signed-body">
+      <figure class="signed-frame" id="signedFrame">
+        <img id="signedImage" alt="Signed copy of this quotation" hidden>
+        <div class="signed-empty" id="signedEmpty">
+          <b>No signed page on file</b>
+          <span>Photograph the page the customer signed. The scanner finds the paper, evens out the light and stores the page here.</span>
+        </div>
+        <span class="signed-stamp" id="signedStamp" hidden>Completed</span>
+      </figure>
+
+      <aside class="signed-side">
+        <dl class="signed-meta" id="signedMeta">
+          <div><dt>File</dt><dd id="scanFile">—</dd></div>
+          <div><dt>Size</dt><dd id="scanSize">—</dd></div>
+          <div><dt>Dimensions</dt><dd id="scanDimensions">—</dd></div>
+          <div><dt>Captured</dt><dd id="scanCaptured">—</dd></div>
+        </dl>
+
+        <div class="signed-buttons">
+          <button class="btn primary block" id="scanBtn" type="button">Scan the signed page</button>
+          <button class="btn ghost block" id="replaceBtn" type="button" hidden>Replace the scan</button>
+        </div>
+
+        <div class="send-block" id="sendBlock" hidden>
+          <p class="field-label">Send to the customer</p>
+          <div class="segmented" id="sendMode" role="group" aria-label="Send the signed copy as">
+            <button type="button" data-mode="file" aria-pressed="true">Signed file</button>
+            <button type="button" data-mode="link" aria-pressed="false">Link only</button>
+          </div>
+          <button class="btn primary block" id="sendBtn" type="button">Send on WhatsApp</button>
+          <div class="signed-links">
+            <button class="btn ghost small" id="shareBtn" type="button">Create link</button>
+            <button class="btn ghost small" id="downloadBtn" type="button">Download</button>
+            <button class="btn danger small" id="removeScanBtn" type="button">Remove</button>
+          </div>
+        </div>
+
+        <p class="signed-hint" id="signedHint">Nothing is sent from the desk itself: WhatsApp opens with the page already attached and you choose the chat.</p>
+      </aside>
+    </div>
+  </section>
 
   <div class="record-grid">
     <section class="panel" id="formCard">
@@ -55,7 +110,7 @@
             <button class="btn ghost" type="button" id="reprintBtn">Refresh preview</button>
           </div>
         </form>
-        <p class="rail-note">The sheet is rendered from the template snapshot captured when this record was issued. Later template versions never change an existing quotation.</p>
+        <p class="rail-note" id="formNote">The sheet is rendered from the template snapshot captured when this record was issued. Later template versions never change an existing quotation.</p>
       </div>
     </section>
 

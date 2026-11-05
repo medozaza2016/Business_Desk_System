@@ -9,8 +9,8 @@ Live: <https://quote.ahmedmohamed.org>
 
 - **Cloudflare Workers** — API, print rendering, all routing
 - **Workers Assets** (`./public`) — the desk UI, no framework, no build step
-- **D1** — `companies`, `templates`, `quote_sequences`, `quotations`, `settings`, `audit_events`
-- **R2** (`ASSETS`) — per-company logo uploads (`logos/…`), validated PNG/JPEG/WebP, ≤ 512 KB
+- **D1** — `companies`, `templates`, `quote_sequences`, `quotations`, `quotation_scans`, `settings`, `audit_events`
+- **R2** (`ASSETS`) — per-company logos (`logos/…`) and signed pages (`scans/…`), validated PNG/JPEG/WebP
 - Authentication: one shared passcode, PBKDF2-SHA256 (100,000 iterations), stateless HMAC session cookie
 
 ## Features
@@ -28,6 +28,17 @@ Live: <https://quote.ahmedmohamed.org>
   history.
 - Live A4 preview inside the quotation record page, editable details, soft cancel, per-company CSV
   export, and an audit trail of every mutation.
+- **Signed copy per quotation**, captured with an in-app scanner: the page outline is detected live, the
+  four corners stay draggable, and the stored image is a straightened, shadow-free JPEG (≤ 4 MB) in R2.
+  No SDK, no build step — the geometry runs in the browser (`public/scan.js`).
+- **WhatsApp hand-off** from the record page: attach the signed file through the OS share sheet, or send
+  a private `/s/<token>` link with the figures and the same picture. The desk default lives in *Settings*
+  and the operator can switch it for a single send. On a desktop the picture downloads and the caption is
+  copied, because `wa.me` links cannot carry a file.
+- **Workflow state**: a quotation is *issued* → *signed* (a scan exists) → *completed*. Completing needs
+  the signed page, freezes the numbers, and stamps the record; reopening thaws it.
+- The ledger is ordered by quotation number (highest first) with `?sort=date` for the calendar order, and
+  each row shows whether the paperwork is unsigned, signed or completed.
 
 ## Quick start
 
@@ -65,15 +76,25 @@ kept for visual comparison. They are not served by the Worker.
 ## Project layout
 
 ```
-src/index.js                      Worker: auth, API, print rendering
+src/index.js                      Worker: auth, API, print rendering, scan + share routes
+src/share-page.js                 The public /s/<token> page (one HTML document)
 src/types.d.ts                    *.html text-module declaration
 templates/default-quotation.html  Bilingual A4 sheet (seeded as template v1)
 public/index.html                 Desk: passcode gate, workspace, settings
-public/quote.html                 Quotation record + live A4 preview
+public/quote.html                 Quotation record + signed copy + live A4 preview
 public/app.css                    Design system ("precision paperwork")
 public/app.js, public/quote.js    Client logic
+public/scan.js                    In-app scanner: detection maths + camera shell
+scripts/test-scan.mjs             Node unit tests for the scan geometry
 migrations/                       D1 schema, forward-only
 docs/                             API, templates, operations, PRD
+```
+
+## Tests
+
+```bash
+npm run test:scan            # scanner geometry (detect, homography, warp, lighting)
+npm run typecheck            # tsc over the Worker and the client modules
 ```
 
 ## Notes
