@@ -495,6 +495,87 @@ const handleTemplateActivate = async (env, ctx, session, templateId) => {
   return json({ activated: templateId });
 };
 
+/** Sample vehicle used to proof a template before it goes live. */
+const PREVIEW_SAMPLE = { model: "AUDI A8", year: "2012", chassis: "WAUZZZ4H0DN000001", cents: 24850000 };
+
+const companyRow = async (env, companyId) =>
+  env.DB.prepare(`SELECT ${COMPANY_COLUMNS} FROM companies WHERE id=?`).bind(companyId).first();
+
+/**
+ * Renders a template through the same path as /print (snapshot fields + renderQuote),
+ * so the settings preview cannot drift from the printed sheet. Uses sample data and the
+ * next live number - nothing is written and no serial is burned.
+ */
+const renderTemplatePreview = async (env, company, html) => {
+  const next = await peekNextNumber(env, company, todayIso());
+  const row = {
+    quote_number: next.quote_number,
+    quote_date: todayIso(),
+    model: PREVIEW_SAMPLE.model,
+    year: PREVIEW_SAMPLE.year,
+    chassis: PREVIEW_SAMPLE.chassis,
+    amount_cents: PREVIEW_SAMPLE.cents,
+    amount_words: amountWordsFromCents(PREVIEW_SAMPLE.cents),
+    company_name: company.name,
+    company_snapshot_json: JSON.stringify({
+      name: company.name,
+      legal_name: company.legal_name,
+      address: company.address,
+      phone: company.phone,
+      email: company.email,
+      currency: company.currency,
+      letterhead_url: LETTERHEAD_URL,
+    }),
+  };
+  return {
+    html: renderQuote(html || DEFAULT_TEMPLATE, buildPrintFields(row)),
+    sample: { quote_number: next.quote_number, date: row.quote_date, amount_cents: row.amount_cents },
+  };
+};
+
+/** Preview for HTML that is still in the editor (never persisted). */
+const handleTemplatePreviewDraft = async (request, env, companyId) => {
+  const body = await bodyJson(request);
+  const html = typeof body?.html === "string" ? body.html : "";
+  if (!html.trim()) return json({ error: "template_html_required" }, 400);
+  if (html.length > MAX_TEMPLATE_BYTES) return json({ error: "template_too_large" }, 413);
+  const company = await companyRow(env, companyId);
+  if (!company) return json({ error: "company_not_found" }, 404);
+  return json(await renderTemplatePreview(env, company, html));
+};
+
+/** Preview for a stored version. */
+const handleTemplatePreviewVersion = async (env, companyId, templateId) => {
+  const row = await env.DB.prepare("SELECT html FROM templates WHERE id=? AND company_id=?")
+    .bind(templateId, companyId).first();
+  if (!row) return json({ error: "template_not_found" }, 404);
+  const company = await companyRow(env, companyId);
+  if (!company) return json({ error: "company_not_found" }, 404);
+  return json(await renderTemplatePreview(env, company, row.html));
+};
+
+/**
+ * Deletes one stored version. The live version is protected; quotations keep their own
+ * HTML snapshot, so records are detached (template_id -> NULL) instead of blocking.
+ */
+const handleTemplateDelete = async (env, ctx, session, companyId, templateId) => {
+  const row = await env.DB.prepare("SELECT id,version,active FROM templates WHERE id=? AND company_id=?")
+    .bind(templateId, companyId).first();
+  if (!row) return json({ error: "template_not_found" }, 404);
+  if (row.active) return json({ error: "template_is_active" }, 409);
+  const inUse = await env.DB.prepare("SELECT COUNT(*) AS n FROM quotations WHERE template_id=?")
+    .bind(templateId).first();
+  const detached = Number(inUse?.n || 0);
+  await env.DB.batch([
+    env.DB.prepare("UPDATE quotations SET template_id=NULL WHERE template_id=?").bind(templateId),
+    env.DB.prepare("DELETE FROM templates WHERE id=? AND company_id=?").bind(templateId, companyId),
+  ]);
+  audit(env, ctx, session.name, "template.deleted", "template", templateId, {
+    company_id: companyId, version: row.version, detached_records: detached,
+  });
+  return json({ deleted: templateId, version: row.version, detached_records: detached });
+};
+
 /* =========================== quotations =========================== */
 
 const decorate = (row) => ({
@@ -788,7 +869,7 @@ async function route(request, env, ctx, url) {
   if (path === "/api/auth/login" && method === "POST") return handleLogin(request, env);
   if (path === "/api/auth/logout" && method === "POST") return handleLogout(request);
 
-  const [resource, id, action, child] = path.slice("/api/".length).split("/").filter(Boolean);
+  const [resource, id, action, child, tail] = path.slice("/api/".length).split("/").filter(Boolean);
 
   if (!KNOWN_RESOURCES.has(resource)) return json({ error: "not_found", path }, 404);
 
@@ -806,7 +887,16 @@ async function route(request, env, ctx, url) {
       if (method === "GET") return handleTemplateList(env, id);
       if (method === "POST") return handleTemplateSave(request, env, ctx, session, id);
     }
-    if (id && action === "templates" && child && method === "GET") return handleTemplateGet(env, id, child);
+    if (id && action === "templates" && child === "preview" && !tail && method === "POST") {
+      return handleTemplatePreviewDraft(request, env, id);
+    }
+    if (id && action === "templates" && child && !tail) {
+      if (method === "GET") return handleTemplateGet(env, id, child);
+      if (method === "DELETE") return handleTemplateDelete(env, ctx, session, id, child);
+    }
+    if (id && action === "templates" && child && tail === "preview" && method === "GET") {
+      return handleTemplatePreviewVersion(env, id, child);
+    }
   }
 
   if (resource === "templates" && id && action === "activate" && method === "POST") {

@@ -113,14 +113,34 @@
 
 <main class="view" id="settingsView" hidden>
   <div class="settings-wrap">
-    <header class="settings-head">
-      <p class="eyebrow">Configuration</p>
-      <h1>Desk settings</h1>
-      <p class="muted">Company details, print template versions and the shared passcode.</p>
-    </header>
-    <div class="settings-grid">
-      <section class="panel">
-        <div class="card-head"><h2>Company profile</h2><a class="btn ghost small" href="/">Back to desk</a></div>
+
+    <aside class="settings-nav">
+      <header class="settings-nav-head">
+        <p class="eyebrow">Configuration</p>
+        <h1>Desk settings</h1>
+      </header>
+      <nav class="settings-menu" id="settingsMenu" aria-label="Settings sections">
+        <button class="settings-tab" type="button" data-pane="company" aria-current="true">
+          <b>Company profile</b><small>letterhead identity</small>
+        </button>
+        <button class="settings-tab" type="button" data-pane="template">
+          <b>Print template</b><small><span id="navTemplateCount">0</span> versions</small>
+        </button>
+        <button class="settings-tab" type="button" data-pane="access">
+          <b>Shared access</b><small>passcode rotation</small>
+        </button>
+        <button class="settings-tab" type="button" data-pane="companies">
+          <b>Companies</b><small><span id="companyCount">0</span> desks</small>
+        </button>
+      </nav>
+      <div class="settings-nav-foot">
+        <a class="btn ghost small block" href="/">← Back to desk</a>
+      </div>
+    </aside>
+
+    <div class="settings-panes">
+      <section class="panel settings-pane" data-pane="company">
+        <div class="card-head"><h2>Company profile</h2><span class="chip" id="companyStateChip">—</span></div>
         <div class="card-body">
           <form id="companyForm" novalidate>
             <div class="grid-2">
@@ -141,23 +161,59 @@
         </div>
       </section>
 
-      <section class="panel">
-        <div class="card-head"><h2>Print template</h2><span class="chip" id="templateChip">v1</span></div>
-        <div class="card-body">
-          <ul class="list" id="templateList"></ul>
-          <hr class="rule">
-          <label class="field">
-            <span class="field-label">Template HTML <em>publishes as a new version</em></span>
-            <textarea id="templateHtml" spellcheck="false"></textarea>
-          </label>
-          <div class="card-actions">
-            <button class="btn primary" type="button" id="templateSave">Publish version</button>
-            <button class="btn ghost" type="button" id="templateLoad">Reload active</button>
+      <section class="panel settings-pane" data-pane="template" hidden>
+        <div class="card-head">
+          <h2>Print template</h2>
+          <span class="chip" id="templateChip">v1</span>
+        </div>
+        <div class="card-body studio">
+          <div class="studio-col">
+            <div class="studio-block-head">
+              <h3>Versions</h3>
+              <span id="templateMeta">—</span>
+            </div>
+            <ul class="versions" id="templateList"></ul>
+            <hr class="rule">
+            <div class="grid-2">
+              <label class="field">
+                <span class="field-label">Version name</span>
+                <input id="templateName" maxlength="100" placeholder="Version 4">
+              </label>
+              <div class="field">
+                <span class="field-label">On publish <em>always a new version</em></span>
+                <label class="checkline"><input id="templateActivate" type="checkbox" checked><span>Make it live</span></label>
+              </div>
+            </div>
+            <label class="field">
+              <span class="field-label">Template HTML <em id="editorHint">flat {{placeholders}}</em></span>
+              <textarea id="templateHtml" spellcheck="false" autocapitalize="off" autocomplete="off"></textarea>
+            </label>
+            <div class="card-actions">
+              <button class="btn primary" type="button" id="templateSave">Publish version</button>
+              <button class="btn" type="button" id="templatePreviewDraft">Preview edits</button>
+              <button class="btn ghost" type="button" id="templateLoad">Reload live</button>
+            </div>
+          </div>
+
+          <div class="studio-preview">
+            <div class="studio-preview-head">
+              <h3>Sheet preview</h3>
+              <span class="chip" id="previewSourceChip">live</span>
+            </div>
+            <div class="preview-stage" id="studioStage">
+              <div class="preview-frame" id="studioFrame">
+                <iframe id="studioPreview" title="Print template preview" sandbox></iframe>
+              </div>
+            </div>
+            <div class="preview-note">
+              <span id="studioNote">sample vehicle</span>
+              <button class="btn ghost small" type="button" id="studioRefresh">Refresh</button>
+            </div>
           </div>
         </div>
       </section>
 
-      <section class="panel">
+      <section class="panel settings-pane" data-pane="access" hidden>
         <div class="card-head"><h2>Shared access</h2><span class="chip" id="passcodeChip">12h session</span></div>
         <div class="card-body">
           <form id="passcodeForm" novalidate>
@@ -170,8 +226,8 @@
         </div>
       </section>
 
-      <section class="panel">
-        <div class="card-head"><h2>Companies</h2><span class="chip" id="companyCount">0</span></div>
+      <section class="panel settings-pane" data-pane="companies" hidden>
+        <div class="card-head"><h2>Companies</h2><span class="chip" id="companyStateChip2">—</span></div>
         <div class="card-body">
           <ul class="list" id="companyList"></ul>
           <hr class="rule">

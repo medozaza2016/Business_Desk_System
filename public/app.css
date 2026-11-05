@@ -575,24 +575,180 @@ th.money-head, td.money { text-align: right; }
 .settings-wrap {
   position: relative;
   z-index: 1;
-  max-width: 1180px;
+  display: grid;
+  grid-template-columns: 244px minmax(0, 1fr);
+  gap: 22px;
+  align-items: start;
+  max-width: 1340px;
   margin: 0 auto;
   padding: 26px 22px 64px;
 }
 
-.settings-head {
-  padding-bottom: 14px;
-  margin-bottom: 20px;
-  border-bottom: 2px solid var(--ink);
+/* side panel — a section index laid out like a carbon-copy margin */
+.settings-nav {
+  position: sticky;
+  top: 78px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 18px 16px 16px;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--red);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  background-image:
+    linear-gradient(90deg, #c51e250a 0 1px, transparent 1px),
+    linear-gradient(180deg, #fffefb, #fbf9f5);
 }
 
-.settings-head h1 { margin: 0; font-size: 23px; letter-spacing: -.02em; }
+.settings-nav-head { padding-bottom: 12px; border-bottom: 1px solid var(--line); }
+.settings-nav-head .eyebrow { margin: 0 0 4px; }
+.settings-nav-head h1 { margin: 0; font-size: 17px; letter-spacing: -.01em; }
 
-.settings-grid {
+.settings-menu { display: flex; flex-direction: column; }
+
+.settings-tab {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  align-items: flex-start;
+  width: 100%;
+  padding: 9px 10px;
+  border: 0;
+  border-left: 2px solid transparent;
+  border-radius: 0 var(--radius) var(--radius) 0;
+  background: transparent;
+  font: inherit;
+  text-align: left;
+  color: var(--ink-soft);
+  cursor: pointer;
+  transition: background .12s ease, border-color .12s ease;
+}
+
+.settings-tab b { font-size: 12.5px; font-weight: 700; }
+.settings-tab small {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: .07em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.settings-tab:hover { background: #ffffff9c; }
+.settings-tab[aria-current="true"] { border-left-color: var(--red); background: #fff; }
+.settings-tab[aria-current="true"] b { color: var(--ink); }
+.settings-tab[aria-current="true"] small { color: var(--red-deep); }
+
+.settings-nav-foot { margin-top: auto; padding-top: 12px; border-top: 1px dashed var(--line); }
+
+.settings-panes { display: grid; gap: 18px; min-width: 0; }
+.settings-pane[hidden] { display: none; }
+
+/* template studio — versions + editor on the left, proof sheet on the right */
+.studio {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
-  gap: 18px;
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 400px);
+  gap: 20px;
   align-items: start;
+}
+
+.studio-col { min-width: 0; }
+
+.studio-block-head,
+.studio-preview-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.studio-block-head h3,
+.studio-preview-head h3 {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+
+.studio-block-head span {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: .06em;
+  color: var(--muted);
+}
+
+.versions { margin: 0 0 6px; padding: 0; list-style: none; display: grid; gap: 6px; }
+
+.version-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  padding: 8px 10px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius);
+  background: #fffdfa;
+}
+
+.version-row.on { border-color: #dca9a5; box-shadow: inset 3px 0 0 var(--red); background: #fff; }
+
+.version-main { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.version-main b { display: flex; align-items: center; gap: 6px; font-family: var(--mono); font-size: 12px; }
+.version-main small {
+  font-size: 11px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.version-actions { display: flex; gap: 4px; flex-wrap: wrap; justify-content: flex-end; }
+.version-actions .btn { min-height: 26px; padding: 0 8px; font-size: 10.5px; }
+.version-empty { padding: 12px 0; font-size: 12.5px; color: var(--muted); }
+
+.studio-col textarea { min-height: 300px; }
+
+.studio-preview {
+  position: sticky;
+  top: 78px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--sheet);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+
+.studio-preview-head {
+  margin: 0;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--line);
+  background: #fbfaf7;
+}
+
+.studio-preview .preview-note { border-top: 1px solid var(--line); }
+
+.checkline {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+  color: var(--ink-soft);
+  cursor: pointer;
+}
+
+.checkline input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 2px;
+  accent-color: var(--red);
+  cursor: pointer;
 }
 
 .card-head {
@@ -726,6 +882,30 @@ hr.rule { border: 0; border-top: 1px dashed var(--line); margin: 16px 0; }
 }
 
 /* ------------------------------------------------------------ responsive --- */
+
+@media (max-width: 1240px) {
+  .studio { grid-template-columns: minmax(0, 1fr) minmax(272px, 330px); }
+}
+
+@media (max-width: 1080px) {
+  .settings-wrap { grid-template-columns: 1fr; }
+  .settings-nav { position: static; gap: 10px; }
+  .settings-nav-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; padding-bottom: 8px; }
+  .settings-nav-head h1 { font-size: 16px; }
+  .settings-menu { flex-direction: row; gap: 2px; overflow-x: auto; }
+  .settings-tab {
+    align-items: center;
+    border-left: 0;
+    border-bottom: 2px solid transparent;
+    border-radius: var(--radius) var(--radius) 0 0;
+    white-space: nowrap;
+  }
+  .settings-tab[aria-current="true"] { border-left-color: transparent; border-bottom-color: var(--red); }
+  .settings-tab small { display: none; }
+  .settings-nav-foot { display: none; }
+  .studio { grid-template-columns: 1fr; }
+  .studio-preview { position: static; }
+}
 
 @media (max-width: 1180px) {
   .record-grid { grid-template-columns: 1fr; }

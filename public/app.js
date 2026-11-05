@@ -11,7 +11,9 @@ const state = {
   quotes: [],
   search: "",
   templates: [],
+  templateEditId: null,
   settingsOpen: false,
+  settingsPane: "company",
 };
 
 const storage = {
@@ -49,6 +51,9 @@ const humanError = (error) => {
     numbering_exhausted: "Could not allocate a number. Try again.",
     template_html_required: "The template cannot be empty.",
     template_too_large: "Template is larger than 200,000 characters.",
+    template_not_found: "That template version no longer exists.",
+    template_is_active: "The live version cannot be deleted. Activate another version first.",
+    company_not_found: "That company no longer exists.",
     invalid_body: "The request could not be read.",
   };
   return map[error?.message] || error?.message || "Something went wrong.";
@@ -341,6 +346,8 @@ async function submitQuote(event) {
 function paintCompanySettings() {
   const company = activeCompany();
   $("companyCount").textContent = String(state.companies.length);
+  $("companyStateChip").textContent = company ? (company.active ? "active" : "inactive") : "no company";
+  $("companyStateChip2").textContent = `${state.companies.length} total`;
   $("passcodeChip").textContent = `${state.status?.session_hours || 12}h session`;
   $("cName").value = company?.name || "";
   $("cLegal").value = company?.legal_name || "";
@@ -447,11 +454,102 @@ async function createCompany(event) {
   }
 }
 
-async function loadTemplates() {
-  const company = activeCompany();
+/* ---- template studio ---- */
+
+const A4_W = 793.7;   // 210mm at 96dpi
+const A4_H = 1122.5;  // 297mm at 96dpi
+
+function fitStudioPreview() {
+  const stage = $("studioStage");
+  const frame = $("studioFrame");
+  const iframe = $("studioPreview");
+  if (!stage || stage.offsetParent === null) return;
+  const available = stage.clientWidth - 32;
+  if (available <= 0) return;
+  const scale = Math.min(available / A4_W, 1);
+  frame.style.width = `${Math.round(A4_W * scale)}px`;
+  frame.style.height = `${Math.round(A4_H * scale)}px`;
+  iframe.style.transform = `scale(${scale})`;
+}
+
+/** Paints a server-rendered sheet into the sandboxed preview frame. */
+function paintSheet(html, source, note) {
+  const chip = $("previewSourceChip");
+  $("studioPreview").srcdoc = html || "";
+  chip.textContent = source;
+  chip.className = `chip ${source === "draft" ? "off" : "ok"}`;
+  if (note) $("studioNote").textContent = note;
+  fitStudioPreview();
+}
+
+function versionButton(label, handler, kind = "") {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = `btn ghost small${kind ? ` ${kind}` : ""}`;
+  button.textContent = label;
+  button.addEventListener("click", handler);
+  return button;
+}
+
+function markActiveVersion() {
+  for (const row of $("templateList").querySelectorAll(".version-row")) {
+    row.classList.toggle("on", row.dataset.id === state.templateEditId);
+  }
+}
+
+function renderVersionList() {
   const list = $("templateList");
   list.textContent = "";
-  if (!company) return;
+  if (!state.templates.length) {
+    const item = document.createElement("li");
+    item.className = "version-empty";
+    item.textContent = "No versions yet — publish the default sheet below.";
+    list.appendChild(item);
+    return;
+  }
+  for (const template of state.templates) {
+    const row = document.createElement("li");
+    row.className = "version-row";
+    row.dataset.id = template.id;
+
+    const main = document.createElement("div");
+    main.className = "version-main";
+    const title = document.createElement("b");
+    title.textContent = `v${template.version}`;
+    if (template.active) {
+      const chip = document.createElement("span");
+      chip.className = "chip ok";
+      chip.textContent = "live";
+      title.appendChild(chip);
+    }
+    const sub = document.createElement("small");
+    sub.textContent = [template.name, `${Math.max(1, Math.round((template.bytes || 0) / 1024))} KB`,
+      (template.created_at || "").slice(0, 10)].filter(Boolean).join(" · ");
+    main.append(title, sub);
+
+    const actions = document.createElement("div");
+    actions.className = "version-actions";
+    actions.appendChild(versionButton("Preview", () => previewTemplate(template)));
+    actions.appendChild(versionButton("Edit", () => openTemplate(template.id)));
+    if (!template.active) {
+      actions.appendChild(versionButton("Activate", () => activateTemplate(template)));
+      actions.appendChild(versionButton("Delete", () => deleteTemplate(template), "danger"));
+    }
+    row.append(main, actions);
+    list.appendChild(row);
+  }
+  markActiveVersion();
+}
+
+async function loadTemplates(selectId) {
+  const company = activeCompany();
+  $("templateList").textContent = "";
+  if (!company) {
+    $("navTemplateCount").textContent = "0";
+    $("templateChip").textContent = "no company";
+    $("templateMeta").textContent = "no company selected";
+    return;
+  }
   try {
     const data = await api(`/api/companies/${encodeURIComponent(company.id)}/templates`);
     state.templates = data.templates || [];
@@ -460,34 +558,15 @@ async function loadTemplates() {
     return;
   }
   const live = state.templates.find((t) => t.active);
-  $("templateChip").textContent = live ? `v${live.version}` : "none";
-  for (const template of state.templates) {
-    const item = document.createElement("li");
-    const label = document.createElement("span");
-    label.className = "mono";
-    label.textContent = `v${template.version} · ${template.name} · ${Math.round((template.bytes || 0) / 1024)} KB`;
-    const actions = document.createElement("span");
-    if (template.active) {
-      const chip = document.createElement("span");
-      chip.className = "chip ok";
-      chip.textContent = "live";
-      actions.appendChild(chip);
-    } else {
-      const activate = document.createElement("button");
-      activate.type = "button";
-      activate.className = "btn ghost small";
-      activate.textContent = "Activate";
-      activate.addEventListener("click", () => activateTemplate(template));
-      actions.appendChild(activate);
-    }
-    item.append(label, actions);
-    list.appendChild(item);
-  }
-  if (!state.templates.length) {
-    const item = document.createElement("li");
-    item.textContent = "No template versions yet.";
-    list.appendChild(item);
-  }
+  $("templateChip").textContent = live ? `v${live.version} live` : "no live version";
+  $("templateMeta").textContent = live ? `live v${live.version}` : "no live version";
+  $("navTemplateCount").textContent = String(state.templates.length);
+  renderVersionList();
+  const target = selectId
+    || (state.templates.some((t) => t.id === state.templateEditId) ? state.templateEditId : null)
+    || live?.id;
+  if (target) await openTemplate(target);
+  else if (!state.templates.length) paintSheet("", "draft", "nothing to preview yet");
 }
 
 async function openTemplate(templateId) {
@@ -496,7 +575,43 @@ async function openTemplate(templateId) {
   try {
     const data = await api(`/api/companies/${encodeURIComponent(company.id)}/templates/${encodeURIComponent(templateId)}`);
     $("templateHtml").value = data.template.html || "";
-    toast(`Loaded template v${data.template.version}.`);
+    $("templateName").value = "";
+    state.templateEditId = templateId;
+    $("editorHint").textContent = `editing v${data.template.version}`;
+    markActiveVersion();
+    const preview = await api(
+      `/api/companies/${encodeURIComponent(company.id)}/templates/${encodeURIComponent(templateId)}/preview`
+    );
+    paintSheet(preview.html, `v${data.template.version}`, `sample · ${preview.sample?.quote_number || "next number"}`);
+  } catch (error) {
+    toast(humanError(error), "error");
+  }
+}
+
+async function previewTemplate(template) {
+  const company = activeCompany();
+  if (!company) return;
+  try {
+    const data = await api(
+      `/api/companies/${encodeURIComponent(company.id)}/templates/${encodeURIComponent(template.id)}/preview`
+    );
+    paintSheet(data.html, `v${template.version}`, `sample · ${data.sample?.quote_number || "next number"}`);
+  } catch (error) {
+    toast(humanError(error), "error");
+  }
+}
+
+async function previewDraft() {
+  const company = activeCompany();
+  if (!company) return;
+  const html = $("templateHtml").value;
+  if (!html.trim()) { toast("The template cannot be empty.", "error"); return; }
+  try {
+    const data = await api(`/api/companies/${encodeURIComponent(company.id)}/templates/preview`, {
+      method: "POST",
+      body: { html },
+    });
+    paintSheet(data.html, "draft", `unsaved edits · ${data.sample?.quote_number || "sample"}`);
   } catch (error) {
     toast(humanError(error), "error");
   }
@@ -504,8 +619,9 @@ async function openTemplate(templateId) {
 
 async function loadActiveTemplate() {
   const live = state.templates.find((t) => t.active);
-  if (!live) { toast("No active template to load.", "error"); return; }
+  if (!live) { toast("No live template to reload.", "error"); return; }
   await openTemplate(live.id);
+  toast(`Live version v${live.version} loaded.`);
 }
 
 async function publishTemplate() {
@@ -513,15 +629,23 @@ async function publishTemplate() {
   if (!company) return;
   const html = $("templateHtml").value;
   if (!html.trim()) { toast("The template cannot be empty.", "error"); return; }
+  const activate = $("templateActivate").checked;
+  const name = $("templateName").value.trim() || `Version ${(state.templates[0]?.version || 0) + 1}`;
+  const button = $("templateSave");
+  button.disabled = true;
   try {
     const data = await api(`/api/companies/${encodeURIComponent(company.id)}/templates`, {
       method: "POST",
-      body: { html, name: `Version ${(state.templates[0]?.version || 0) + 1}` },
+      body: { html, name, activate },
     });
-    toast(`Published template v${data.template.version}.`);
-    await loadTemplates();
+    toast(`Published v${data.template.version}${activate ? " and made it live" : ""}.`);
+    $("templateName").value = "";
+    state.templateEditId = data.template.id;
+    await loadTemplates(data.template.id);
   } catch (error) {
     toast(humanError(error), "error");
+  } finally {
+    button.disabled = false;
   }
 }
 
@@ -529,6 +653,32 @@ async function activateTemplate(template) {
   try {
     await api(`/api/templates/${encodeURIComponent(template.id)}/activate`, { method: "POST" });
     toast(`Template v${template.version} is live.`);
+    state.templateEditId = template.id;
+    await loadTemplates(template.id);
+  } catch (error) {
+    toast(humanError(error), "error");
+  }
+}
+
+async function deleteTemplate(template) {
+  const company = activeCompany();
+  if (!company) return;
+  const okay = confirm(`Delete template v${template.version} (${template.name})? Existing quotations keep their own snapshot.`);
+  if (!okay) return;
+  try {
+    const data = await api(
+      `/api/companies/${encodeURIComponent(company.id)}/templates/${encodeURIComponent(template.id)}`,
+      { method: "DELETE" }
+    );
+    const detached = Number(data.detached_records || 0);
+    toast(detached
+      ? `v${data.version} deleted · ${detached} record(s) keep their snapshot.`
+      : `Template v${data.version} deleted.`);
+    if (state.templateEditId === template.id) {
+      state.templateEditId = null;
+      $("templateHtml").value = "";
+      $("editorHint").textContent = "flat {{placeholders}}";
+    }
     await loadTemplates();
   } catch (error) {
     toast(humanError(error), "error");
@@ -553,6 +703,29 @@ async function rotatePasscode(event) {
 
 /* ------------------------------------------------------------------ views --- */
 
+const SETTINGS_PANES = ["company", "template", "access", "companies"];
+
+/** Side-panel tabs: one pane at a time, mirrored in ?pane= so links can deep-link. */
+function showSettingsPane(name, { remember = true } = {}) {
+  const pane = SETTINGS_PANES.includes(name) ? name : "company";
+  state.settingsPane = pane;
+  for (const tab of $("settingsMenu").querySelectorAll(".settings-tab")) {
+    tab.setAttribute("aria-current", tab.dataset.pane === pane ? "true" : "false");
+  }
+  for (const section of document.querySelectorAll(".settings-pane")) {
+    const paneEl = /** @type {HTMLElement} */ (section);
+    paneEl.hidden = paneEl.dataset.pane !== pane;
+  }
+  if (remember) {
+    const url = new URL(location.href);
+    url.searchParams.set("view", "settings");
+    if (pane === "company") url.searchParams.delete("pane");
+    else url.searchParams.set("pane", pane);
+    history.replaceState(null, "", url);
+  }
+  if (pane === "template") window.requestAnimationFrame(fitStudioPreview);
+}
+
 function showView(name) {
   state.settingsOpen = name === "settings";
   $("topbar").hidden = false;
@@ -561,12 +734,17 @@ function showView(name) {
   $("settingsView").hidden = name !== "settings";
   const url = new URL(location.href);
   if (name === "settings") url.searchParams.set("view", "settings");
-  else url.searchParams.delete("view");
+  else {
+    url.searchParams.delete("view");
+    url.searchParams.delete("pane");
+  }
   history.replaceState(null, "", url);
+  if (name === "settings") window.requestAnimationFrame(fitStudioPreview);
 }
 
-async function openSettings() {
+async function openSettings(pane) {
   showView("settings");
+  showSettingsPane(pane || new URLSearchParams(location.search).get("pane") || "company");
   await loadTemplates();
 }
 
@@ -617,6 +795,18 @@ function bind() {
   $("newCompanyForm").addEventListener("submit", createCompany);
   $("templateSave").addEventListener("click", publishTemplate);
   $("templateLoad").addEventListener("click", loadActiveTemplate);
+  $("templatePreviewDraft").addEventListener("click", previewDraft);
+  $("studioRefresh").addEventListener("click", () => {
+    const current = state.templates.find((t) => t.id === state.templateEditId);
+    if (current) previewTemplate(current);
+    else previewDraft();
+  });
+  $("studioPreview").addEventListener("load", fitStudioPreview);
+  window.addEventListener("resize", () => { if (state.settingsOpen) fitStudioPreview(); });
+  $("settingsMenu").addEventListener("click", (event) => {
+    const tab = event.target.closest(".settings-tab");
+    if (tab) showSettingsPane(tab.dataset.pane);
+  });
   $("passcodeForm").addEventListener("submit", rotatePasscode);
 
   let searchTimer = null;
