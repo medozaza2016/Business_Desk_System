@@ -3,118 +3,532 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Quotation {{quote_number}}</title>
+<meta name="color-scheme" content="light">
+<title>Challenger Cars Quotation {{quote_number}}</title>
 <style>
-@page { size:A4 portrait; margin:0; }
-* { box-sizing:border-box; }
-html,body { margin:0; padding:0; width:210mm; min-height:297mm; }
-body { background:#e8eaed; color:#111; font-family:Arial,"Segoe UI",Tahoma,"DejaVu Sans",sans-serif;
-  -webkit-print-color-adjust:exact; print-color-adjust:exact; }
-.sheet {
- position:relative; width:210mm; height:297mm; overflow:hidden; margin:0 auto;
- background:#fff url("{{letterhead_url}}") center/100% 100% no-repeat;
-}
-.body-area { position:absolute; left:0; top:0; width:210mm; height:297mm; }
-.titlebar {
- position:absolute; left:22.315mm; top:54.592mm; width:159.791mm; height:14.345mm;
- border-radius:8.368mm; background:#e9e9e9; display:grid;
- grid-template-columns:1fr 1.594mm 1fr; align-items:center; text-align:center; padding:0 6.973mm;
-}
-.title-en { font-size:8.368mm; font-weight:900; }
-.title-divider { width:1.594mm; height:10.759mm; background:#c51e25; justify-self:center; }
-.title-ar { direction:rtl; font-size:7.770mm; font-weight:900; }
-.meta { position:absolute; top:73.321mm; left:11.954mm; width:180.114mm;
- display:grid; grid-template-columns:85.275mm 73.719mm; gap:21.120mm; }
-.meta-box { height:9.962mm; border:.398mm solid #c51e25; border-radius:2.989mm; background:#fff;
- display:flex; align-items:center; padding:0 5.180mm; white-space:nowrap; }
-.meta-label { font-size:4.981mm; font-weight:800; }
-.meta-value { font-size:5.15mm; font-weight:900; color:#c51e25; margin-left:2.2mm; }
-.meta-date { color:#111; text-align:center; flex:1; }
-.meta-box:first-child { padding-left:3.5mm; padding-right:3.5mm; }
-.meta-box:first-child .meta-label { font-size:4.55mm; }
-.meta-box:first-child .meta-value { font-size:4.55mm; margin-left:1.4mm; }
-.intro { position:absolute; top:85.474mm; left:19.924mm; width:170.152mm; text-align:center; }
-.intro-en { font-size:4.782mm; line-height:1.23; font-weight:650; }
-.intro-ar { margin-top:1.594mm; direction:rtl; font-size:4.981mm; line-height:1.25; font-weight:800; }
-.vehicle { position:absolute; left:11.755mm; top:107.192mm; width:180.712mm; height:32.300mm;
- border:.398mm solid #c51e25; border-radius:3.387mm; overflow:hidden; background:#fff; }
-.vrow { display:grid; grid-template-columns:42.239mm 1fr 42.837mm; height:10.2mm; }
-.vrow + .vrow { border-top:.398mm solid #c51e25; }
-.vlabel { background:#f3f0e9; display:flex; align-items:center; padding:0 2.8mm; font-size:5.0mm;
- font-weight:800; white-space:nowrap; border-right:.398mm solid #c51e25; }
-.vvalue { display:flex; align-items:center; padding:0 5.579mm; font-size:5.3mm; font-weight:800;
- background:#fff; overflow-wrap:anywhere; min-width:0; }
-.var { background:#f3f0e9; border-left:.398mm solid #c51e25; direction:rtl; display:flex;
- align-items:center; justify-content:flex-start; padding:0 1.8mm; font-size:3.65mm; font-weight:800; white-space:nowrap; }
-.estimated { position:absolute; left:11.556mm; top:146.044mm; width:181.110mm; height:13.548mm;
- border:.398mm solid #c51e25; border-radius:3.786mm; display:grid;
- grid-template-columns:1fr 65.750mm 1fr; align-items:center; padding:0 5.778mm; background:#fff; }
-.est-en { font-size:5.579mm; font-weight:900; white-space:nowrap; }
-.est-ar { text-align:right; direction:rtl; font-size:5.579mm; font-weight:900; white-space:nowrap; }
-.amount { height:12.751mm; border-radius:5.579mm; background:#c51e25; color:#fff; display:flex;
- align-items:center; justify-content:center; font-size:7.15mm; font-weight:900; letter-spacing:.1mm; white-space:nowrap; }
-.statement { position:absolute; left:8.567mm; top:164.175mm; width:186.888mm; height:38.852mm;
- border-radius:7.571mm; background:#f5f4f0; padding:2.391mm 8.966mm; }
-.statement-ar { position:absolute; left:9.564mm; right:9.564mm; top:1.992mm; height:15.740mm;
- display:flex; flex-direction:column; justify-content:center; align-items:center; text-align:center;
- direction:rtl; font-size:3.8mm; line-height:1.25; font-weight:900; }
-.statement-ar > div { width:100%; text-align:center; white-space:nowrap; }
-.statement-line { position:absolute; left:8.966mm; right:8.966mm; top:20.123mm; height:.598mm; background:#c51e25; }
-.statement-en { position:absolute; left:7.571mm; right:7.571mm; top:22.0mm; height:15.0mm;
- display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center;
- font-size:3.15mm; line-height:1.15; font-weight:800; }
-.brandline { position:absolute; left:11.755mm; top:269mm; width:180.712mm; text-align:center;
- font-size:3.1mm; line-height:1.35; color:#6a6a6a; }
-.brandline b { color:#111; letter-spacing:.04em; }
-.brandline span { display:block; font-size:2.9mm; }
-@media screen { .sheet { box-shadow:0 4px 22px #0002; } }
-@media print {
- html,body { width:210mm; height:297mm; margin:0; padding:0; background:#fff; }
- .sheet { margin:0; box-shadow:none; page-break-after:avoid; break-after:avoid; }
-}
+  @page { size: A4 portrait; margin: 0; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; width: 210mm; min-height: 297mm; }
+  body {
+    color: #111;
+    background: #e8eaed;
+    font-family: Arial, "Segoe UI", Tahoma, "DejaVu Sans", sans-serif;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  .sheet {
+    position: relative;
+    width: 210mm;
+    height: 297mm;
+    margin: 0 auto;
+    overflow: hidden;
+    background: #fff;
+  }
+
+  /* Brand artwork recreated as HTML and inline SVG, so no external letterhead
+     image or remote asset is required. */
+  .brand-header {
+    position: absolute;
+    inset: 0 0 auto;
+    height: 53mm;
+    text-align: center;
+  }
+  .brand-logo {
+    position: absolute;
+    top: 1.2mm;
+    left: 50%;
+    width: 64mm;
+    height: 25mm;
+    transform: translateX(-50%);
+  }
+  .brand-script {
+    position: absolute;
+    top: 24.2mm;
+    left: 0;
+    width: 100%;
+    color: #c51e25;
+    font-family: Georgia, "Times New Roman", serif;
+    font-size: 5.6mm;
+    font-style: italic;
+    font-weight: 700;
+    line-height: 1;
+  }
+  .brand-ar {
+    position: absolute;
+    top: 31mm;
+    left: 8mm;
+    right: 8mm;
+    direction: rtl;
+    font-size: 7mm;
+    line-height: 1.1;
+    font-weight: 900;
+    white-space: nowrap;
+  }
+  .brand-ar .accent, .brand-en .accent { color: #c51e25; }
+  .brand-en {
+    position: absolute;
+    top: 41.2mm;
+    left: 6mm;
+    right: 6mm;
+    font-size: 8.3mm;
+    line-height: 1;
+    font-weight: 900;
+    letter-spacing: .12mm;
+    white-space: nowrap;
+  }
+
+  .titlebar {
+    position: absolute;
+    left: 22.315mm;
+    top: 54.592mm;
+    width: 159.791mm;
+    height: 14.345mm;
+    border-radius: 8.368mm;
+    background: #e9e9e9;
+    display: grid;
+    grid-template-columns: 1fr 1.594mm 1fr;
+    align-items: center;
+    text-align: center;
+    padding: 0 6.973mm;
+  }
+  .title-en { font-size: 8.368mm; font-weight: 900; }
+  .title-divider {
+    width: 1.594mm;
+    height: 10.759mm;
+    background: #c51e25;
+    justify-self: center;
+  }
+  .title-ar {
+    direction: rtl;
+    font-size: 7.35mm;
+    font-weight: 900;
+    white-space: nowrap;
+  }
+
+  .meta {
+    position: absolute;
+    top: 73.321mm;
+    left: 11.954mm;
+    width: 180.114mm;
+    display: grid;
+    grid-template-columns: 85.275mm 73.719mm;
+    gap: 21.120mm;
+  }
+  .meta-box {
+    height: 9.962mm;
+    border: .398mm solid #c51e25;
+    border-radius: 2.989mm;
+    background: #fff;
+    display: flex;
+    align-items: center;
+    padding: 0 5.180mm;
+    white-space: nowrap;
+  }
+  .meta-label { font-size: 4.981mm; font-weight: 800; }
+  .meta-value {
+    margin-left: 2.2mm;
+    color: #c51e25;
+    font-size: 5.15mm;
+    font-weight: 900;
+  }
+  .meta-date { color: #111; text-align: center; flex: 1; }
+  .meta-box:first-child { padding-left: 3.5mm; padding-right: 3.5mm; }
+  .meta-box:first-child .meta-label,
+  .meta-box:first-child .meta-value {
+    font-size: 4.55mm;
+  }
+  .meta-box:first-child .meta-value { margin-left: 1.4mm; }
+
+  .intro {
+    position: absolute;
+    top: 85.474mm;
+    left: 19.924mm;
+    width: 170.152mm;
+    text-align: center;
+  }
+  .intro-en { font-size: 4.55mm; line-height: 1.23; font-weight: 650; }
+  .intro-ar {
+    margin-top: 1.594mm;
+    direction: rtl;
+    font-size: 4.75mm;
+    line-height: 1.25;
+    font-weight: 800;
+    white-space: nowrap;
+  }
+
+  .vehicle {
+    position: absolute;
+    left: 11.755mm;
+    top: 107.192mm;
+    width: 180.712mm;
+    height: 32.3mm;
+    border: .398mm solid #c51e25;
+    border-radius: 3.387mm;
+    overflow: hidden;
+    background: #fff;
+  }
+  .vrow {
+    display: grid;
+    grid-template-columns: 42.239mm 1fr 42.837mm;
+    height: 10.2mm;
+  }
+  .vrow + .vrow { border-top: .398mm solid #c51e25; }
+  .vlabel {
+    display: flex;
+    align-items: center;
+    padding: 0 2.8mm;
+    border-right: .398mm solid #c51e25;
+    background: #f3f0e9;
+    font-size: 5mm;
+    font-weight: 800;
+    white-space: nowrap;
+  }
+  .vvalue {
+    display: flex;
+    align-items: center;
+    min-width: 0;
+    padding: 0 5.579mm;
+    background: #fff;
+    font-size: 5.3mm;
+    font-weight: 800;
+    overflow-wrap: anywhere;
+  }
+  .var {
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    padding: 0 1.8mm;
+    border-left: .398mm solid #c51e25;
+    background: #f3f0e9;
+    direction: rtl;
+    font-size: 3.65mm;
+    font-weight: 800;
+    white-space: nowrap;
+  }
+
+  .estimated {
+    position: absolute;
+    left: 11.556mm;
+    top: 146.044mm;
+    width: 181.110mm;
+    height: 13.548mm;
+    border: .398mm solid #c51e25;
+    border-radius: 3.786mm;
+    display: grid;
+    grid-template-columns: 1fr 65.750mm 1fr;
+    align-items: center;
+    padding: 0 5.778mm;
+    background: #fff;
+  }
+  .est-en, .est-ar {
+    font-size: 5.35mm;
+    font-weight: 900;
+    white-space: nowrap;
+  }
+  .est-ar { text-align: right; direction: rtl; }
+  .amount {
+    height: 12.751mm;
+    border-radius: 5.579mm;
+    background: #c51e25;
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 7.15mm;
+    font-weight: 900;
+    letter-spacing: .1mm;
+    white-space: nowrap;
+  }
+
+  .statement {
+    position: absolute;
+    left: 8.567mm;
+    top: 164.175mm;
+    width: 186.888mm;
+    height: 38.852mm;
+    border-radius: 7.571mm;
+    background: #f5f4f0;
+    padding: 2.391mm 8.966mm;
+  }
+  .statement-ar {
+    position: absolute;
+    left: 9.564mm;
+    right: 9.564mm;
+    top: 1.992mm;
+    height: 15.740mm;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    text-align: center;
+    direction: rtl;
+    font-size: 3.8mm;
+    line-height: 1.25;
+    font-weight: 900;
+  }
+  .statement-ar > div { width: 100%; text-align: center; white-space: nowrap; }
+  .statement-line {
+    position: absolute;
+    left: 8.966mm;
+    right: 8.966mm;
+    top: 20.123mm;
+    height: .598mm;
+    background: #c51e25;
+  }
+  .statement-en {
+    position: absolute;
+    left: 7.571mm;
+    right: 7.571mm;
+    top: 22mm;
+    height: 15mm;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    font-size: 3.15mm;
+    line-height: 1.15;
+    font-weight: 800;
+  }
+  .amount-words { text-transform: capitalize; }
+
+  .footer {
+    position: absolute;
+    left: 0;
+    top: 205mm;
+    width: 210mm;
+    height: 92mm;
+    background: #fff;
+  }
+  .watermark {
+    position: absolute;
+    top: 1mm;
+    left: 50%;
+    width: 95mm;
+    height: 36mm;
+    transform: translateX(-50%);
+    opacity: .22;
+  }
+  .note-en {
+    position: absolute;
+    left: 12.5mm;
+    top: 36mm;
+    width: 86mm;
+    font-size: 3.45mm;
+    line-height: 1.18;
+    font-weight: 700;
+  }
+  .note-title { color: #c51e25; font-size: 5.6mm; font-weight: 900; margin-bottom: 1mm; }
+  .note-en p { margin: 0; }
+  .note-ar {
+    position: absolute;
+    right: 12.5mm;
+    top: 43mm;
+    width: 86mm;
+    direction: rtl;
+    text-align: right;
+    font-size: 3.55mm;
+    line-height: 1.25;
+    font-weight: 800;
+  }
+  .footer-rule {
+    position: absolute;
+    left: 7.5mm;
+    right: 7.5mm;
+    top: 45.5mm;
+    height: .55mm;
+    background: #c51e25;
+  }
+  .signature-row {
+    position: absolute;
+    top: 48mm;
+    left: 22.8mm;
+    width: 164.4mm;
+    display: grid;
+    grid-template-columns: 75mm 75mm;
+    justify-content: space-between;
+  }
+  .sign-box {
+    height: 18.7mm;
+    border: .45mm solid #222;
+    border-radius: 3mm;
+    background: rgba(255,255,255,.84);
+    text-align: center;
+    padding: 1mm 2mm;
+    font-size: 3.8mm;
+    font-weight: 800;
+  }
+  .sign-line { margin-top: 6.1mm; letter-spacing: .7mm; font-size: 3.2mm; }
+  .contact {
+    position: absolute;
+    top: 78mm;
+    left: 8mm;
+    right: 8mm;
+    text-align: center;
+    font-size: 4.7mm;
+    line-height: 1.24;
+    font-weight: 800;
+  }
+  .contact .email { color: #c51e25; }
+  .contact .address { font-size: 4.05mm; }
+  .bottom-stripe {
+    position: absolute;
+    left: 6mm;
+    right: 6mm;
+    bottom: 1.2mm;
+    height: 3.8mm;
+    background: linear-gradient(90deg,#111 0 50%,#c51e25 50% 100%);
+  }
+
+  @media screen { .sheet { box-shadow: 0 4px 22px #0002; } }
+  @media print {
+    html, body { width: 210mm; height: 297mm; margin: 0; padding: 0; background: #fff; }
+    .sheet { margin: 0; box-shadow: none; page-break-after: avoid; break-after: avoid; }
+  }
 </style>
 </head>
 <body>
-<main class="sheet">
-<section class="body-area">
- <div class="titlebar">
-  <div class="title-en">QUOTATION</div><div class="title-divider"></div><div class="title-ar">عرض سعر / تقييم</div>
- </div>
- <div class="meta">
-  <div class="meta-box"><span class="meta-label">Quotation No.:</span><span class="meta-value">{{quote_number}}</span></div>
-  <div class="meta-box"><span class="meta-label">Date:</span><span class="meta-value meta-date">{{quote_date}}</span></div>
- </div>
- <div class="intro">
-  <div class="intro-en">This is a preliminary valuation for the below mentioned vehicle<br>based on the current market value.</div>
-  <div class="intro-ar">وهو تقييم مبدئي للسيارة المذكورة أدناه بناءً على القيمة الحالية في السوق.</div>
- </div>
- <div class="vehicle">
-  <div class="vrow"><div class="vlabel">Model:</div><div class="vvalue">{{model}}</div><div class="var">الموديل:</div></div>
-  <div class="vrow"><div class="vlabel">Year:</div><div class="vvalue">{{year}}</div><div class="var">سنة الصنع:</div></div>
-  <div class="vrow"><div class="vlabel">Chassis No.:</div><div class="vvalue">{{chassis}}</div><div class="var">رقم الشاسيه:</div></div>
- </div>
- <div class="estimated">
-  <div class="est-en">Estimated Value:</div>
-  <div class="amount">{{currency}} {{amount}}</div>
-  <div class="est-ar">القيمة التقديرية:</div>
- </div>
- <div class="statement">
-  <div class="statement-ar">
-   <div>تُقدّر القيمة السوقية للسيارة، في حال كانت بحالة جيدة،</div>
-   <div>بتاريخ {{quote_date}} بمبلغ وقدره {{amount}} درهم إماراتي فقط.</div>
-  </div>
-  <div class="statement-line"></div>
-  <div class="statement-en">
-   <div>The estimated market value of the vehicle,</div>
-   <div>assuming it is in good condition, as of {{quote_date}},</div>
-   <div>is {{currency}} {{amount}} ({{amount_words}}).</div>
-  </div>
- </div>
- <div class="brandline">
-  <b>{{company_name}}</b>
-  <span>{{company_address}}</span>
-  <span>{{company_phone}} · {{company_email}}</span>
- </div>
-</section>
+<main class="sheet" aria-label="Challenger Cars vehicle valuation quotation">
+  <header class="brand-header">
+    <svg class="brand-logo" viewBox="0 0 500 180" role="img" aria-label="Challenger Cars winged C logo">
+      <g fill="none" stroke="#aeb0b2" stroke-width="6" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M208 57 C161 22 97 19 13 43 C44 49 63 62 83 79 C119 73 160 84 205 111"/>
+        <path d="M292 57 C339 22 403 19 487 43 C456 49 437 62 417 79 C381 73 340 84 295 111"/>
+        <path d="M198 67 C146 43 91 43 31 58 C69 66 92 79 111 91"/>
+        <path d="M302 67 C354 43 409 43 469 58 C431 66 408 79 389 91"/>
+        <path d="M196 79 C147 67 105 69 58 78 C93 87 120 100 145 111"/>
+        <path d="M304 79 C353 67 395 69 442 78 C407 87 380 100 355 111"/>
+        <path d="M205 91 C164 87 133 93 101 105 C137 111 159 123 181 133"/>
+        <path d="M295 91 C336 87 367 93 399 105 C363 111 341 123 319 133"/>
+        <path d="M214 103 C183 106 162 116 145 128"/>
+        <path d="M286 103 C317 106 338 116 355 128"/>
+      </g>
+      <g fill="#ececec" stroke="#9da0a3" stroke-width="3">
+        <path d="M202 49 C170 30 132 27 88 32 C122 43 147 58 169 77 C183 75 196 82 210 96 Z"/>
+        <path d="M298 49 C330 30 368 27 412 32 C378 43 353 58 331 77 C317 75 304 82 290 96 Z"/>
+      </g>
+      <circle cx="250" cy="78" r="61" fill="#fff" stroke="#a7a7a7" stroke-width="4"/>
+      <circle cx="250" cy="78" r="53" fill="#c51e25"/>
+      <text x="250" y="101" text-anchor="middle" fill="#fff" font-family="Georgia,serif" font-size="72" font-weight="700">C</text>
+    </svg>
+    <div class="brand-script">Challenger Cars</div>
+    <div class="brand-ar"><span class="accent">شانجر</span> للسيارات المستعملة ذ.م.م.</div>
+    <div class="brand-en"><span class="accent">CHALLENGER</span> USED CARS EXHB. LLC</div>
+  </header>
+
+  <section class="titlebar" aria-label="Quotation title">
+    <div class="title-en">QUOTATION</div>
+    <div class="title-divider"></div>
+    <div class="title-ar">عرض سعر / تقييم</div>
+  </section>
+
+  <section class="meta" aria-label="Quotation reference and date">
+    <div class="meta-box">
+      <span class="meta-label">Quotation No.:</span>
+      <span class="meta-value">{{quote_number}}</span>
+    </div>
+    <div class="meta-box">
+      <span class="meta-label">Date:</span>
+      <span class="meta-value meta-date" data-format-date>{{quote_date}}</span>
+    </div>
+  </section>
+
+  <section class="intro">
+    <div class="intro-en">This is a preliminary valuation for the below mentioned vehicle<br>based on the current market value.</div>
+    <div class="intro-ar">وهو تقييم مبدئي للسيارة المذكورة أدناه بناءً على القيمة الحالية في السوق.</div>
+  </section>
+
+  <section class="vehicle" aria-label="Vehicle details">
+    <div class="vrow">
+      <div class="vlabel">Model:</div>
+      <div class="vvalue">{{model}}</div>
+      <div class="var">الموديل:</div>
+    </div>
+    <div class="vrow">
+      <div class="vlabel">Year:</div>
+      <div class="vvalue">{{year}}</div>
+      <div class="var">سنة الصنع:</div>
+    </div>
+    <div class="vrow">
+      <div class="vlabel">Chassis No.:</div>
+      <div class="vvalue">{{chassis}}</div>
+      <div class="var">رقم الشاسيه:</div>
+    </div>
+  </section>
+
+  <section class="estimated" aria-label="Estimated vehicle value">
+    <div class="est-en">Estimated Value:</div>
+    <div class="amount">{{currency}} {{amount}}</div>
+    <div class="est-ar">القيمة التقديرية:</div>
+  </section>
+
+  <section class="statement" aria-label="Estimated market value statement">
+    <div class="statement-ar">
+      <div>تُقدّر القيمة السوقية للسيارة، في حال كانت بحالة جيدة،</div>
+      <div>بتاريخ <span data-format-date>{{quote_date}}</span> بمبلغ وقدره {{amount}} {{currency}} فقط.</div>
+    </div>
+    <div class="statement-line"></div>
+    <div class="statement-en">
+      <div>The estimated market value of the vehicle, assuming it is in good condition,</div>
+      <div>as of <span data-format-date>{{quote_date}}</span>, is {{currency}} {{amount}}</div>
+      <div>(<span class="amount-words">{{amount_words}}</span> {{currency}} Only).</div>
+    </div>
+  </section>
+
+  <footer class="footer">
+    <svg class="watermark" viewBox="0 0 500 180" aria-hidden="true">
+      <g fill="none" stroke="#b4a783" stroke-width="6" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M208 57 C161 22 97 19 13 43 C44 49 63 62 83 79 C119 73 160 84 205 111"/>
+        <path d="M292 57 C339 22 403 19 487 43 C456 49 437 62 417 79 C381 73 340 84 295 111"/>
+        <path d="M198 67 C146 43 91 43 31 58 C69 66 92 79 111 91"/>
+        <path d="M302 67 C354 43 409 43 469 58 C431 66 408 79 389 91"/>
+        <path d="M196 79 C147 67 105 69 58 78 C93 87 120 100 145 111"/>
+        <path d="M304 79 C353 67 395 69 442 78 C407 87 380 100 355 111"/>
+        <path d="M205 91 C164 87 133 93 101 105 C137 111 159 123 181 133"/>
+        <path d="M295 91 C336 87 367 93 399 105 C363 111 341 123 319 133"/>
+      </g>
+      <circle cx="250" cy="78" r="59" fill="#c51e25"/>
+      <text x="250" y="101" text-anchor="middle" fill="#fff" font-family="Georgia,serif" font-size="72" font-weight="700">C</text>
+    </svg>
+
+    <div class="note-en">
+      <div class="note-title">Note:</div>
+      <p>• This is an approximate valuation and may vary depending on the vehicle's actual condition and market changes.</p>
+    </div>
+    <div class="note-ar">ملاحظة: هذا تقييم تقريبي وقد يختلف حسب الحالة الفعلية للسيارة وتغيرات السوق.</div>
+    <div class="footer-rule"></div>
+
+    <div class="signature-row">
+      <div class="sign-box">
+        Signature / التوقيع
+        <div class="sign-line">........................................</div>
+      </div>
+      <div class="sign-box">Stamp / الختم</div>
+    </div>
+
+    <div class="contact">
+      <div>Mob.: {{company_phone}}</div>
+      <div class="email">E-mail: {{company_email}}</div>
+      <div class="address">{{company_address}}</div>
+    </div>
+    <div class="bottom-stripe"></div>
+  </footer>
 </main>
-</body></html>
+
+<script>
+  // The API stores quotation dates as ISO (YYYY-MM-DD). Format them for the
+  // bilingual printed document as DD/MM/YYYY without changing the stored value.
+  document.querySelectorAll("[data-format-date]").forEach((node) => {
+    const raw = node.textContent.trim();
+    const match = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (match) node.textContent = match[3] + "/" + match[2] + "/" + match[1];
+  });
+
+  // Open the browser's native print dialog when this document is opened with
+  // ?print=1. No server-side PDF generation is used.
+  window.addEventListener("load", () => {
+    if (new URLSearchParams(window.location.search).has("print")) window.print();
+  });
+</script>
+</body>
+</html>
