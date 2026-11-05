@@ -1,5 +1,7 @@
 /* Quotation record page — edit details, live A4 sheet preview, print. */
 
+import { confirmAction } from "./dialog.js";
+
 /** @param {string} id @returns {any} */
 const $ = (id) => document.getElementById(id);
 const A4_W = 793.7;   // 210mm at 96dpi
@@ -51,7 +53,9 @@ function fitPreview() {
   const stage = $("previewStage");
   const frame = $("previewFrame");
   const iframe = $("preview");
-  const available = stage.clientWidth - 32;
+  /* read the stage's padding instead of assuming 16px: it tightens on narrow screens */
+  const style = getComputedStyle(stage);
+  const available = stage.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
   if (available <= 0) return;
   const scale = Math.min(available / A4_W, 1);
   frame.style.width = `${Math.round(A4_W * scale)}px`;
@@ -136,7 +140,12 @@ function printSheet() {
 
 async function cancelRecord() {
   if (!state.quote) return;
-  if (!confirm(`Cancel quotation ${state.quote.quote_number}? It leaves the desk records.`)) return;
+  const okay = await confirmAction({
+    title: `Cancel quotation ${state.quote.quote_number}?`,
+    message: "It leaves the desk records.",
+    confirm: "Cancel record",
+  });
+  if (!okay) return;
   try {
     await api(`/api/quotations/${encodeURIComponent(state.id)}`, { method: "DELETE" });
     location.href = "/";

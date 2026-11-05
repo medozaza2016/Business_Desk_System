@@ -1,6 +1,8 @@
 /* Challenger Quotation Desk — client
    No framework, no build step. Views: gate → workspace → settings. */
 
+import { confirmAction } from "./dialog.js";
+
 /** @param {string} id @returns {any} */
 const $ = (id) => document.getElementById(id);
 
@@ -238,9 +240,11 @@ async function refreshNextNumber() {
 
 /* ---------------------------------------------------------------- ledger --- */
 
-function rowCell(text, className) {
+/* `label` becomes the caption shown above the value once rows render as cards on phones. */
+function rowCell(text, className, label) {
   const cell = document.createElement("td");
   if (className) cell.className = className;
+  if (label) cell.dataset.label = label;
   cell.textContent = escapeText(text);
   return cell;
 }
@@ -267,7 +271,7 @@ function renderQuotes() {
     numberCell.appendChild(link);
     row.appendChild(numberCell);
 
-    row.appendChild(rowCell(quote.quote_date_text || quote.quote_date));
+    row.appendChild(rowCell(quote.quote_date_text || quote.quote_date, "date", "Date"));
 
     const vehicle = document.createElement("td");
     vehicle.className = "vehicle";
@@ -278,7 +282,7 @@ function renderQuotes() {
     vehicle.append(model, chassis);
     row.appendChild(vehicle);
 
-    row.appendChild(rowCell(`${company?.currency || "AED"} ${quote.amount}`, "money"));
+    row.appendChild(rowCell(`${company?.currency || "AED"} ${quote.amount}`, "money", "Estimated value"));
 
     const actions = document.createElement("td");
     actions.className = "row-actions";
@@ -320,7 +324,12 @@ async function loadQuotes() {
 }
 
 async function cancelQuote(quote) {
-  if (!confirm(`Cancel quotation ${quote.quote_number}? It will be removed from the desk.`)) return;
+  const okay = await confirmAction({
+    title: `Cancel quotation ${quote.quote_number}?`,
+    message: "It will be removed from the desk.",
+    confirm: "Cancel quotation",
+  });
+  if (!okay) return;
   try {
     await api(`/api/quotations/${encodeURIComponent(quote.id)}`, { method: "DELETE" });
     toast(`Cancelled ${quote.quote_number}`);
@@ -465,7 +474,12 @@ async function uploadLogo(file) {
 async function removeLogo() {
   const company = activeCompany();
   if (!company || !company.logo_url) return;
-  if (!confirm(`Remove the logo for ${company.name}? Already issued quotations keep their sheet content.`)) return;
+  const okay = await confirmAction({
+    title: `Remove the logo for ${company.name}?`,
+    message: "Already issued quotations keep their sheet content.",
+    confirm: "Remove logo",
+  });
+  if (!okay) return;
   try {
     const data = await api(`/api/companies/${encodeURIComponent(company.id)}/logo`, { method: "DELETE" });
     replaceCompany(data.company);
@@ -535,7 +549,13 @@ async function saveCompany(event) {
 async function deactivateCompany() {
   const company = activeCompany();
   if (!company) return;
-  if (!confirm(`Deactivate ${company.name}? Existing quotations stay readable.`)) return;
+  const okay = await confirmAction({
+    title: `Deactivate ${company.name}?`,
+    message: "Existing quotations stay readable.",
+    confirm: "Deactivate",
+    cancel: "Keep active",
+  });
+  if (!okay) return;
   try {
     await api(`/api/companies/${encodeURIComponent(company.id)}`, { method: "DELETE" });
     toast(`${company.name} deactivated.`);
@@ -789,7 +809,11 @@ async function activateTemplate(template) {
 async function deleteTemplate(template) {
   const company = activeCompany();
   if (!company) return;
-  const okay = confirm(`Delete template v${template.version} (${template.name})? Existing quotations keep their own snapshot.`);
+  const okay = await confirmAction({
+    title: `Delete template v${template.version} (${template.name})?`,
+    message: "Existing quotations keep their own snapshot.",
+    confirm: `Delete v${template.version}`,
+  });
   if (!okay) return;
   try {
     const data = await api(

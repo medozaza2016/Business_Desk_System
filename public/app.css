@@ -595,6 +595,66 @@ th.money-head, td.money { text-align: right; }
 .toast.show { opacity: 1; transform: none; }
 .toast.error { border-left-color: #ff8a80; background: #2a0f0f; }
 
+/* ------------------------------------------------------- confirm dialog --- */
+
+dialog.modal {
+  width: min(430px, calc(100vw - 24px));
+  max-width: none;
+  max-height: calc(100vh - 24px);
+  margin: auto;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  overflow: visible;
+}
+
+dialog.modal::backdrop { background: #14120e99; }
+
+.modal-card {
+  overflow: hidden;
+  background: var(--sheet);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: 0 30px 60px -28px #000000b3, 0 1px 0 #fff inset;
+  animation: modalIn .16s ease-out;
+}
+
+/* the stamp-red rule that heads every card in the desk */
+.modal-card::before {
+  content: "";
+  display: block;
+  height: 3px;
+  background: var(--red);
+}
+
+.modal-body { padding: 18px 20px 14px; }
+
+.modal-title {
+  margin: 0;
+  font-size: 17px;
+  line-height: 1.35;
+  letter-spacing: -.01em;
+}
+
+.modal-message { margin: 8px 0 0; color: var(--ink-soft); font-size: 13px; }
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 0 20px 18px;
+}
+
+.modal-actions .btn { flex: 0 1 auto; }
+
+/* holding the page still is what makes the prompt feel like part of the app */
+body:has(dialog.modal[open]) { overflow: hidden; }
+
+@keyframes modalIn {
+  from { opacity: 0; transform: translateY(6px) scale(.995); }
+}
+
 /* ------------------------------------------------------------- settings --- */
 
 .settings-wrap {
@@ -1008,6 +1068,112 @@ hr.rule { border: 0; border-top: 1px dashed var(--line); margin: 16px 0; }
   .ledger-head { flex-direction: column; align-items: flex-start; }
 }
 
+/* the five-column ledger cannot breathe on a phone: rows become stacked cards */
+@media (max-width: 760px) {
+  .table-wrap {
+    max-height: none;
+    overflow: visible;
+    border: 0;
+    background: none;
+    box-shadow: none;
+  }
+
+  .table-wrap table { display: block; }
+
+  /* the header row is redundant once every value carries its own caption */
+  .table-wrap thead { display: none; }
+
+  .table-wrap tbody { display: grid; gap: 10px; }
+
+  .table-wrap tbody tr {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "num num"
+      "vehicle vehicle"
+      "date money"
+      "actions actions";
+    gap: 2px 12px;
+    padding: 12px 14px 6px;
+    background: var(--sheet);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+  }
+
+  .table-wrap tbody tr:hover { background: var(--sheet); }
+
+  .table-wrap tbody td {
+    padding: 0;
+    border: 0;
+    white-space: normal;
+    text-align: left;
+  }
+
+  .table-wrap tbody td::before {
+    content: attr(data-label);
+    display: block;
+    margin-bottom: 1px;
+    font-family: var(--mono);
+    font-size: 9px;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  /* the number is the card title and the actions are self-evident */
+  .table-wrap td.num::before,
+  .table-wrap td.vehicle::before,
+  .table-wrap td.row-actions::before { display: none; }
+
+  .table-wrap td.num {
+    grid-area: num;
+    margin-bottom: 6px;
+    padding-bottom: 8px;
+    border-bottom: 1px dashed var(--line-soft);
+    font-size: 14px;
+  }
+
+  .table-wrap td.num a { display: inline-block; padding: 2px 0; }
+
+  .table-wrap td.vehicle { grid-area: vehicle; }
+  .table-wrap td.vehicle b { font-size: 14px; }
+  .table-wrap td.vehicle span { font-size: 11.5px; }
+
+  .table-wrap td.date { grid-area: date; align-self: end; }
+
+  .table-wrap td.money {
+    grid-area: money;
+    align-self: end;
+    text-align: right;
+    font-size: 14px;
+  }
+
+  .table-wrap td.row-actions {
+    grid-area: actions;
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    margin-top: 8px;
+    padding-top: 4px;
+    border-top: 1px solid var(--line-soft);
+  }
+
+  /* "/" separators are noise once the links are spaced apart */
+  .table-wrap td.row-actions .sep { display: none; }
+
+  .table-wrap td.row-actions a,
+  .table-wrap td.row-actions button { padding: 10px 0; font-size: 11px; }
+
+  /* the empty state loses the table's frame, so it needs its own */
+  .table-wrap .empty {
+    background: var(--sheet);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+  }
+}
+
 @media (max-width: 640px) {
   .topbar { padding: 0 14px; gap: 10px; height: auto; min-height: 58px; flex-wrap: wrap; padding-top: 8px; padding-bottom: 8px; }
   .brand small, .topbar-rule { display: none; }
@@ -1018,6 +1184,49 @@ hr.rule { border: 0; border-top: 1px dashed var(--line); margin: 16px 0; }
   .search input { width: 100%; }
   .ledger-actions { width: 100%; }
   .logo-field { grid-template-columns: 1fr; }
+
+  /* iOS zooms into any focused control below 16px, which then hides the field label */
+  .field input, .field textarea, .prefix input, .search input, select { font-size: 16px; }
+  .field textarea { height: 68px; }
+  .prefix-tag { font-size: 13px; padding: 0 8px; }
+
+  /* touch targets: 44px for primary actions, 36px for the small ones */
+  .btn { min-height: 44px; }
+  .btn.small { min-height: 36px; font-size: 11.5px; }
+
+  .rail { padding: 16px 14px 18px; }
+  .rail-step { font-size: 10px; }
+
+  .search { flex: 1 1 100%; }
+  .search input { min-width: 0; }
+  .search input, .search .btn { min-height: 44px; }
+  .search .btn { flex: 0 0 auto; }
+
+  /* the record page: two meta columns, no sticky sheet, tighter cards */
+  .record-meta { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 14px; }
+  .record-actions { justify-content: flex-start; width: 100%; }
+  .card-head { padding: 12px 14px; }
+  .card-body { padding: 14px; }
+  .card-actions .btn { flex: 1 1 140px; }
+  .preview-stage { padding: 10px; }
+  .preview-note { flex-direction: column; align-items: flex-start; gap: 2px; }
+
+  /* a fixed toast would otherwise run off the right edge */
+  .toast { left: 12px; right: 12px; bottom: 12px; max-width: none; }
+
+  /* thumb reach: the action sits on top, "keep" lands under the thumb */
+  .modal-body { padding: 16px 16px 12px; }
+  .modal-actions { flex-direction: column-reverse; padding: 0 16px 16px; }
+  .modal-actions .btn { width: 100%; }
+}
+
+@media (max-width: 480px) {
+  .topbar .chip { display: none; }
+  .brand { font-size: 12px; letter-spacing: .12em; }
+  .record-number { font-size: 26px; }
+  .gate { padding: 24px 14px; }
+  .gate-body { padding: 22px 18px; }
+  .settings-menu { gap: 0; }
 }
 
 /* ------------------------------------------------------------ animations --- */
