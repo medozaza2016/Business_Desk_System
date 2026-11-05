@@ -88,7 +88,25 @@ async function handleApi(request,env,url){
   return json({company:{id,name:body.name.trim(),slug}},201);
  }
 
- if(url.pathname==="/api/quotations" && request.method==="GET"){
+
+ if(url.pathname==="/api/templates" && request.method==="GET"){
+  const companyId=url.searchParams.get("company_id");if(!companyId)return json({error:"company_id_required"},400);
+  const rows=await env.DB.prepare("SELECT id,name,version,active,created_at FROM templates WHERE company_id=? ORDER BY version DESC").bind(companyId).all();
+  return json({templates:rows.results});
+ }
+ if(url.pathname==="/api/templates" && request.method==="POST"){
+  const b=await bodyJson(request);
+  if(!b||!b.company_id||typeof b.html!=="string"||b.html.length>200000||typeof b.name!=="string"||!b.name.trim())return json({error:"company_name_and_template_html_required"},400);
+  const company=await env.DB.prepare("SELECT id FROM companies WHERE id=? AND active=1").bind(b.company_id).first();if(!company)return json({error:"company_not_found"},404);
+  const versionRow=await env.DB.prepare("SELECT COALESCE(MAX(version),0)+1 AS next FROM templates WHERE company_id=?").bind(b.company_id).first();
+  const id=crypto.randomUUID(),version=versionRow.next;
+  await env.DB.batch([
+   env.DB.prepare("UPDATE templates SET active=0 WHERE company_id=?").bind(b.company_id),
+   env.DB.prepare("INSERT INTO templates(id,company_id,name,version,html,active) VALUES(?,?,?,?,?,1)").bind(id,b.company_id,b.name.trim().slice(0,100),version,b.html)
+  ]);
+  return json({template:{id,name:b.name.trim(),version,active:true}},201);
+ }
+\n if(url.pathname==="/api/quotations" && request.method==="GET"){
   const companyId=url.searchParams.get("company_id");if(!companyId)return json({error:"company_id_required"},400);
   const q=url.searchParams.get("q")||"",limit=Math.min(Math.max(Number(url.searchParams.get("limit")||50),1),100);
   const rows=await env.DB.prepare("SELECT id,quote_number,quote_date,model,year,chassis,amount_cents,created_at FROM quotations WHERE company_id=? AND deleted_at IS NULL AND (quote_number LIKE ? OR model LIKE ? OR chassis LIKE ?) ORDER BY quote_date DESC,created_at DESC LIMIT ?")
