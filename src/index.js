@@ -1,172 +1,858 @@
-const JSON_HEADERS = {"content-type":"application/json; charset=utf-8","cache-control":"no-store"};
-const SESSION_SECONDS = 60 * 60 * 24 * 7;
+import DEFAULT_TEMPLATE from "../templates/default-quotation.html";
+
+/* --------------------------------------------------------------------------
+   Challenger Quotation Platform - Cloudflare Worker
+   - Auth: one shared passcode (settings table) + stateless HMAC session cookie
+   - Data: D1 (companies, templates, quote_sequences, quotations, audit_events)
+   - Print: hydrated HTML snapshot + A4 bilingual sheet, printed by the browser
+   -------------------------------------------------------------------------- */
+
+const JSON_HEADERS = { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" };
+const SESSION_COOKIE = "q_session";
+const DEFAULT_SESSION_HOURS = 12;
+const PBKDF2_ITERATIONS = 100000;
+const MIN_PASSCODE_LENGTH = 6;
+const MAX_PASSCODE_LENGTH = 200;
+const MAX_TEMPLATE_BYTES = 200000;
+const LETTERHEAD_URL = "/letterhead_background.png";
+const AUTOPRINT_SCRIPT = 'window.addEventListener("load",function(){setTimeout(function(){window.print()},400)});';
+
 const enc = new TextEncoder();
-const json = (body,status=200,extra={}) => new Response(JSON.stringify(body),{status,headers:{...JSON_HEADERS,...extra}});
-const b64url = bytes => btoa(String.fromCharCode(...new Uint8Array(bytes))).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,"");
-const randomToken = (n=32) => { const a=new Uint8Array(n); crypto.getRandomValues(a); return b64url(a); };
-const sha256 = async s => b64url(await crypto.subtle.digest("SHA-256",enc.encode(s)));
-const passwordHash = async (password,salt,iterations=210000) => {
- const key=await crypto.subtle.importKey("raw",enc.encode(password),"PBKDF2",false,["deriveBits"]);
- return b64url(await crypto.subtle.deriveBits({name:"PBKDF2",salt:enc.encode(salt),iterations,hash:"SHA-256"},key,256));
+const dec = new TextDecoder();
+
+const json = (body, status = 200, extra = {}) =>
+  new Response(JSON.stringify(body), { status, headers: { ...JSON_HEADERS, ...extra } });
+
+const b64url = (bytes) =>
+  btoa(String.fromCharCode(...new Uint8Array(bytes))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+
+const fromB64url = (text) => {
+  const normalized = text.replace(/-/g, "+").replace(/_/g, "/");
+  const padded = normalized + "=".repeat((4 - (normalized.length % 4)) % 4);
+  return Uint8Array.from(atob(padded), (c) => c.charCodeAt(0));
 };
-const parseCookie = (request,name) => (request.headers.get("Cookie")||"").split(";").map(x=>x.trim()).find(x=>x.startsWith(name+"="))?.slice(name.length+1);
-const bodyJson = async req => { try { return await req.json(); } catch { return null; } };
-const validEmail = s => typeof s==="string" && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s) && s.length<=254;
-const slugify = s => s.toLowerCase().normalize("NFKD").replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"").slice(0,50);
-async function currentAdmin(request,env){
- const token=parseCookie(request,"q_session"); if(!token)return null;
- const row=await env.DB.prepare("SELECT a.id,a.email FROM sessions s JOIN admin_users a ON a.id=s.admin_id WHERE s.token_hash=? AND s.expires_at>?").bind(await sha256(token),Math.floor(Date.now()/1000)).first();
- return row||null;
-}
 
-const escapeHtml = s => String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
-const numberWords = n => {
- const ones=["zero","one","two","three","four","five","six","seven","eight","nine","ten","eleven","twelve","thirteen","fourteen","fifteen","sixteen","seventeen","eighteen","nineteen"];
- const tens=["","","twenty","thirty","forty","fifty","sixty","seventy","eighty","ninety"];
- const under1000=x=>{let out=[];if(x>=100){out.push(ones[Math.floor(x/100)],"hundred");x%=100;}if(x>=20){out.push(tens[Math.floor(x/10)]);if(x%10)out.push(ones[x%10]);}else if(x>0)out.push(ones[x]);return out.join(" ");};
- if(!Number.isSafeInteger(n)||n<0||n>999999999)return "amount not available";
- if(n===0)return "zero";
- let parts=[];for(const [v,label] of [[1000000,"million"],[1000,"thousand"],[1,""]]){const q=Math.floor(n/v);if(q){parts.push(under1000(q)+(label?" "+label:""));n%=v;}}
- return parts.join(" ");
+const randomToken = (n = 32) => {
+  const bytes = new Uint8Array(n);
+  crypto.getRandomValues(bytes);
+  return b64url(bytes);
 };
-const DEFAULT_TEMPLATE = `<!doctype html><html><head><meta charset="utf-8"><title>Quotation {{quote_number}}</title><style>
-body{font-family:Arial,sans-serif;color:#202020;margin:0;padding:36px}header{display:flex;justify-content:space-between;border-bottom:2px solid #222;padding-bottom:18px}h1{font-size:24px;margin:0 0 8px}.meta{ text-align:right}table{width:100%;border-collapse:collapse;margin:26px 0}td,th{border:1px solid #777;padding:11px;text-align:left}th{background:#f0f0f0}.amount{font-size:18px;font-weight:bold}.foot{margin-top:48px;font-size:12px;color:#555}@media print{body{padding:15mm}button{display:none}}
-</style></head><body><header><div><h1>{{company_name}}</h1><div>{{company_address}}</div><div>{{company_phone}} · {{company_email}}</div></div><div class="meta"><b>QUOTATION</b><div>{{quote_number}}</div><div>{{quote_date}}</div></div></header><table><tr><th>Vehicle / Model</th><td>{{model}}</td></tr><tr><th>Year</th><td>{{year}}</td></tr><tr><th>Chassis Number</th><td>{{chassis}}</td></tr><tr><th>Estimated Market Value</th><td class="amount">{{currency}} {{amount}}</td></tr></table><p>Estimated market value as of {{quote_date}} is {{currency}} {{amount}} ({{amount_words}} only).</p><p>We trust the above is in order.</p><div class="foot">{{company_name}} · {{company_address}}</div><script>window.onload=()=>{if(new URLSearchParams(location.search).has("print"))window.print()}</script></body></html>`;
-const renderQuote = (html,fields) => html.replace(/\\{\\{([a-z_]+)\\}\\}/g,(_,k)=>escapeHtml(fields[k]??""));
 
-async function handleApi(request,env,url){
- if(url.pathname==="/api/health" && request.method==="GET"){
-  try{const r=await env.DB.prepare("SELECT 1 AS ok").first();return json({ok:r?.ok===1,service:"challenger-quotation-platform",version:"0.2.0"});}
-  catch{return json({ok:false,error:"database_unavailable"},503);}
- }
- if(url.pathname==="/api/setup" && request.method==="POST"){
-  if(!env.BOOTSTRAP_SECRET)return json({error:"setup_secret_not_configured"},503);
-  const body=await bodyJson(request); if(!body||request.headers.get("x-setup-secret")!==env.BOOTSTRAP_SECRET)return json({error:"unauthorized"},401);
-  if(!validEmail(body.email)||typeof body.password!=="string"||body.password.length<14)return json({error:"valid_email_and_password_minimum_14_characters_required"},400);
-  const count=await env.DB.prepare("SELECT COUNT(*) AS n FROM admin_users").first();
-  if(count.n>0)return json({error:"setup_already_completed"},409);
-  const id=crypto.randomUUID(),salt=randomToken(16),hash=await passwordHash(body.password,salt);
-  await env.DB.prepare("INSERT INTO admin_users(id,email,password_salt,password_hash) VALUES(?,?,?,?)").bind(id,body.email,salt,hash).run();
-  return json({created:true,message:"Administrator created. Sign in at /api/auth/login"},201);
- }
- if(url.pathname==="/api/auth/login" && request.method==="POST"){
-  const body=await bodyJson(request);if(!body||!validEmail(body.email)||typeof body.password!=="string")return json({error:"invalid_credentials"},400);
-  const ip=request.headers.get("CF-Connecting-IP")||"unknown",ipHash=await sha256(ip),now=Math.floor(Date.now()/1000);
-  await env.DB.prepare("DELETE FROM login_attempts WHERE attempted_at<?").bind(now-900).run();
-  const attempts=await env.DB.prepare("SELECT COUNT(*) AS n FROM login_attempts WHERE ip_hash=? AND attempted_at>?").bind(ipHash,now-900).first();
-  if(attempts.n>=10)return json({error:"too_many_attempts"},429);
-  await env.DB.prepare("INSERT INTO login_attempts(ip_hash,attempted_at) VALUES(?,?)").bind(ipHash,now).run();
-  const admin=await env.DB.prepare("SELECT id,email,password_salt,password_hash,password_iterations FROM admin_users WHERE email=? COLLATE NOCASE").bind(body.email).first();
-  const actual=admin?await passwordHash(body.password,admin.password_salt,admin.password_iterations):await passwordHash(body.password,"dummy-salt");
-  if(!admin||actual!==admin.password_hash)return json({error:"invalid_credentials"},401);
-  const token=randomToken(32),expires=now+SESSION_SECONDS;
-  await env.DB.prepare("INSERT INTO sessions(token_hash,admin_id,expires_at) VALUES(?,?,?)").bind(await sha256(token),admin.id,expires).run();
-  await env.DB.prepare("UPDATE admin_users SET last_login_at=CURRENT_TIMESTAMP WHERE id=?").bind(admin.id).run();
-  return json({authenticated:true,admin:{id:admin.id,email:admin.email}},200,{"set-cookie":`q_session=${token}; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=${SESSION_SECONDS}`});
- }
- if(url.pathname==="/api/auth/logout" && request.method==="POST"){
-  const token=parseCookie(request,"q_session");if(token)await env.DB.prepare("DELETE FROM sessions WHERE token_hash=?").bind(await sha256(token)).run();
-  return json({authenticated:false},200,{"set-cookie":"q_session=; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=0"});
- }
- if(url.pathname==="/api/auth/me" && request.method==="GET"){
-  const admin=await currentAdmin(request,env);return json({authenticated:!!admin,admin:admin||null});
- }
- const admin=await currentAdmin(request,env);if(!admin)return json({error:"unauthorized"},401);
- if(url.pathname==="/api/companies" && request.method==="GET"){
-  const result=await env.DB.prepare("SELECT id,name,slug,legal_name,phone,email,address,quotation_prefix,currency,logo_key,letterhead_key,font_name,active,created_at FROM companies ORDER BY name").all();
-  return json({companies:result.results});
- }
- if(url.pathname==="/api/companies" && request.method==="POST"){
-  const body=await bodyJson(request);
-  if(!body||typeof body.name!=="string"||body.name.trim().length<2||body.name.length>120)return json({error:"company_name_required"},400);
-  const slug=slugify(body.slug||body.name);if(!slug)return json({error:"invalid_company_slug"},400);
-  const id=crypto.randomUUID();
-  try{
-   await env.DB.prepare("INSERT INTO companies(id,name,slug,legal_name,phone,email,address,quotation_prefix,currency) VALUES(?,?,?,?,?,?,?,?,?)")
-    .bind(id,body.name.trim(),slug,String(body.legal_name||""),String(body.phone||""),String(body.email||""),String(body.address||""),String(body.quotation_prefix||"QA-").slice(0,12),String(body.currency||"AED").slice(0,3)).run();
-  }catch(e){return json({error:"company_slug_already_exists_or_invalid"},409);}
-  return json({company:{id,name:body.name.trim(),slug}},201);
- }
+const parseCookie = (request, name) =>
+  (request.headers.get("Cookie") || "")
+    .split(";")
+    .map((part) => part.trim())
+    .find((part) => part.startsWith(name + "="))
+    ?.slice(name.length + 1);
 
+const bodyJson = async (request) => {
+  try {
+    const body = await request.json();
+    return body && typeof body === "object" ? body : null;
+  } catch {
+    return null;
+  }
+};
 
- if(url.pathname==="/api/templates" && request.method==="GET"){
-  const companyId=url.searchParams.get("company_id");if(!companyId)return json({error:"company_id_required"},400);
-  const rows=await env.DB.prepare("SELECT id,name,version,active,created_at FROM templates WHERE company_id=? ORDER BY version DESC").bind(companyId).all();
-  return json({templates:rows.results});
- }
- if(url.pathname==="/api/templates" && request.method==="POST"){
-  const b=await bodyJson(request);
-  if(!b||!b.company_id||typeof b.html!=="string"||b.html.length>200000||typeof b.name!=="string"||!b.name.trim())return json({error:"company_name_and_template_html_required"},400);
-  const company=await env.DB.prepare("SELECT id FROM companies WHERE id=? AND active=1").bind(b.company_id).first();if(!company)return json({error:"company_not_found"},404);
-  const versionRow=await env.DB.prepare("SELECT COALESCE(MAX(version),0)+1 AS next FROM templates WHERE company_id=?").bind(b.company_id).first();
-  const id=crypto.randomUUID(),version=versionRow.next;
+const slugify = (value) =>
+  String(value || "").toLowerCase().normalize("NFKD").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 50);
+
+const cleanName = (value) => {
+  const name = typeof value === "string" ? value.trim().slice(0, 60) : "";
+  return name || "Shared user";
+};
+
+const escapeHtml = (value) =>
+  String(value ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+/** Replace flat {{token}} placeholders. Unknown tokens render empty. */
+const renderQuote = (html, fields) =>
+  String(html).replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_, key) => escapeHtml(fields[key] ?? ""));
+
+const numberWords = (n) => {
+  const ones = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten",
+    "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen", "seventeen", "eighteen", "nineteen"];
+  const tens = ["", "", "twenty", "thirty", "forty", "fifty", "sixty", "seventy", "eighty", "ninety"];
+  const under1000 = (x) => {
+    const out = [];
+    if (x >= 100) { out.push(ones[Math.floor(x / 100)], "hundred"); x %= 100; }
+    if (x >= 20) {
+      const unit = x % 10;
+      out.push(unit ? `${tens[Math.floor(x / 10)]}-${ones[unit]}` : tens[Math.floor(x / 10)]);
+    }
+    else if (x > 0) out.push(ones[x]);
+    return out.join(" ");
+  };
+  if (!Number.isSafeInteger(n) || n < 0 || n > 999999999) return "amount not available";
+  if (n === 0) return "zero";
+  const parts = [];
+  /** @type {[number, string][]} */
+  const scales = [[1000000, "million"], [1000, "thousand"], [1, ""]];
+  for (const [value, label] of scales) {
+    const q = Math.floor(n / value);
+    if (q) { parts.push(under1000(q) + (label ? " " + label : "")); n %= value; }
+  }
+  return parts.join(" ");
+};
+
+/** 543210 -> "5,432.10" (en-US grouping, no Intl dependency). */
+const formatMoney = (cents) => {
+  const safe = Math.round(Number(cents) || 0);
+  const sign = safe < 0 ? "-" : "";
+  const abs = Math.abs(safe);
+  const whole = String(Math.floor(abs / 100)).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  return sign + whole + "." + String(abs % 100).padStart(2, "0");
+};
+
+const amountWordsFromCents = (cents) => {
+  const abs = Math.abs(Math.round(Number(cents) || 0));
+  const whole = Math.floor(abs / 100);
+  const fraction = abs % 100;
+  return numberWords(whole) + (fraction ? " and " + numberWords(fraction) + " fils" : "");
+};
+
+/** "2026-11-05" -> "05/11/2026" (calendar-safe, no timezone drift). */
+const formatDateDMY = (iso) => {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(iso || ""));
+  return match ? `${match[3]}/${match[2]}/${match[1]}` : String(iso || "");
+};
+
+const validIsoDate = (value) => {
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const parsed = new Date(value + "T00:00:00Z");
+  return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
+};
+
+const todayIso = () => new Date().toISOString().slice(0, 10);
+
+/** "12,345.60" | "12345.6" -> 1234560 cents, or null when invalid. */
+const parseAmountToCents = (value) => {
+  const raw = typeof value === "number" ? String(value) : String(value ?? "").replace(/,/g, "").trim();
+  if (!raw) return null;
+  const amount = Number(raw);
+  if (!Number.isFinite(amount) || amount < 0 || amount > 99999999.99) return null;
+  return Math.round(amount * 100);
+};
+
+const parseJson = (text) => {
+  try { return JSON.parse(text || "{}"); } catch { return {}; }
+};
+
+const fail = (status, code, details = {}) => Object.assign(new Error(code), { status, code, details });
+
+/* ============================== auth ============================== */
+
+const settingsRead = async (env, key) => {
+  const row = await env.DB.prepare("SELECT value FROM settings WHERE key=?").bind(key).first();
+  return row ? row.value : null;
+};
+
+const settingsWrite = (env, key, value) =>
+  env.DB.prepare(
+    "INSERT INTO settings(key,value,updated_at) VALUES(?,?,CURRENT_TIMESTAMP) " +
+    "ON CONFLICT(key) DO UPDATE SET value=excluded.value,updated_at=CURRENT_TIMESTAMP"
+  ).bind(key, value).run();
+
+/**
+ * PBKDF2-SHA256. 100,000 iterations is the ceiling of the Workers runtime;
+ * 210,000 (the previous default) throws and surfaced as an opaque 500.
+ */
+const stretchPasscode = async (passcode, salt, iterations = PBKDF2_ITERATIONS) => {
+  const key = await crypto.subtle.importKey("raw", enc.encode(passcode), "PBKDF2", false, ["deriveBits"]);
+  const bits = await crypto.subtle.deriveBits({ name: "PBKDF2", salt: enc.encode(salt), iterations, hash: "SHA-256" }, key, 256);
+  return b64url(bits);
+};
+
+/** @returns {Promise<{salt:string,hash:string,iterations:number,updated_at:string}|null>} */
+const readAuth = async (env) => {
+  const raw = await settingsRead(env, "auth_passcode");
+  if (!raw) return null;
+  const parsed = parseJson(raw);
+  return parsed && parsed.salt && parsed.hash ? parsed : null;
+};
+
+const writeAuth = (env, record) => settingsWrite(env, "auth_passcode", JSON.stringify(record));
+
+const hmacKey = (authHash) =>
+  crypto.subtle.importKey("raw", enc.encode("q_session.v1:" + authHash), { name: "HMAC", hash: "SHA-256" }, false, ["sign", "verify"]);
+
+/** @returns {Promise<string>} `v1.<payload>.<signature>` */
+const signSession = async (claims, key) => {
+  const payload = b64url(enc.encode(JSON.stringify(claims)));
+  const signature = await crypto.subtle.sign("HMAC", key, enc.encode(payload));
+  return `v1.${payload}.${b64url(signature)}`;
+};
+
+/** @returns {Promise<{name:string,exp:number}|null>} */
+const verifySession = async (token, key) => {
+  if (typeof token !== "string") return null;
+  const parts = token.split(".");
+  if (parts.length !== 3 || parts[0] !== "v1") return null;
+  let valid = false;
+  try {
+    valid = await crypto.subtle.verify("HMAC", key, fromB64url(parts[2]), enc.encode(parts[1]));
+  } catch {
+    return null;
+  }
+  if (!valid) return null;
+  const claims = parseJson(dec.decode(fromB64url(parts[1])));
+  if (!claims || typeof claims.exp !== "number") return null;
+  if (claims.exp * 1000 <= Date.now()) return null;
+  return { name: typeof claims.n === "string" ? claims.n : "Shared user", exp: claims.exp };
+};
+
+const sessionHours = (env) => {
+  const hours = Number(env?.SESSION_HOURS);
+  return Number.isFinite(hours) && hours > 0 && hours <= 720 ? hours : DEFAULT_SESSION_HOURS;
+};
+
+const sessionExpiry = (env) => Math.floor(Date.now() / 1000) + sessionHours(env) * 3600;
+
+const isHttps = (request) => new URL(request.url).protocol === "https:";
+
+const sessionCookie = (token, request, env) => {
+  const parts = [`${SESSION_COOKIE}=${token}`, "HttpOnly", "Path=/", "SameSite=Lax", `Max-Age=${sessionHours(env) * 3600}`];
+  if (isHttps(request)) parts.push("Secure");
+  return parts.join("; ");
+};
+
+const clearedCookie = (request) => {
+  const parts = [`${SESSION_COOKIE}=`, "HttpOnly", "Path=/", "SameSite=Lax", "Max-Age=0"];
+  if (isHttps(request)) parts.push("Secure");
+  return parts.join("; ");
+};
+
+/** @returns {Promise<{name:string,exp:number}|null>} */
+const currentSession = async (request, env) => {
+  const token = parseCookie(request, SESSION_COOKIE);
+  if (!token) return null;
+  const auth = await readAuth(env);
+  if (!auth) return null;
+  return verifySession(token, await hmacKey(auth.hash));
+};
+
+const safeEqual = (a, b) => {
+  const x = enc.encode(String(a));
+  const y = enc.encode(String(b));
+  if (x.byteLength !== y.byteLength) return false;
+  const timingSafe = crypto.subtle.timingSafeEqual;
+  if (typeof timingSafe === "function") {
+    try { return timingSafe.call(crypto.subtle, x, y); } catch { return false; }
+  }
+  let diff = 0;
+  for (let i = 0; i < x.byteLength; i++) diff |= x[i] ^ y[i];
+  return diff === 0;
+};
+
+/** Best-effort in-isolate throttle: 8 failed attempts per IP per 10 minutes. */
+const loginAttempts = new Map();
+const THROTTLE_WINDOW_MS = 10 * 60 * 1000;
+const THROTTLE_MAX_ATTEMPTS = 8;
+
+const throttleFor = (ip) => {
+  const now = Date.now();
+  const record = loginAttempts.get(ip);
+  if (!record || now > record.reset) {
+    const fresh = { count: 0, reset: now + THROTTLE_WINDOW_MS };
+    loginAttempts.set(ip, fresh);
+    return fresh;
+  }
+  return record;
+};
+
+const writeAuditRow = (env, actor, action, entity, entityId, details) =>
+  env.DB.prepare("INSERT INTO audit_events(id,actor,action,entity,entity_id,details_json) VALUES(?,?,?,?,?,?)")
+    .bind(crypto.randomUUID(), String(actor || "shared"), action, entity, entityId || null, JSON.stringify(details || {}))
+    .run();
+
+/** Fire-and-forget audit write; never blocks or breaks the request. */
+const audit = (env, ctx, actor, action, entity, entityId, details = {}) => {
+  const run = writeAuditRow(env, actor, action, entity, entityId, details).catch(() => {});
+  if (ctx && typeof ctx.waitUntil === "function") ctx.waitUntil(run);
+  return run;
+};
+
+let scriptHashCache = null;
+const scriptHash = async () => {
+  if (!scriptHashCache) scriptHashCache = b64url(await crypto.subtle.digest("SHA-256", enc.encode(AUTOPRINT_SCRIPT)));
+  return scriptHashCache;
+};
+
+const authStatus = async (request, env) => {
+  const auth = await readAuth(env);
+  const session = auth ? await currentSession(request, env) : null;
+  return json({
+    setup: !!auth,
+    signed_in: !!session,
+    name: session?.name || null,
+    session_hours: sessionHours(env),
+  });
+};
+
+const handleSetup = async (request, env, ctx) => {
+  if (await readAuth(env)) return json({ error: "already_configured" }, 409);
+  const body = await bodyJson(request);
+  const passcode = typeof body?.passcode === "string" ? body.passcode : "";
+  if (passcode.length < MIN_PASSCODE_LENGTH || passcode.length > MAX_PASSCODE_LENGTH) {
+    return json({ error: "passcode_too_short", min_length: MIN_PASSCODE_LENGTH }, 400);
+  }
+  const salt = randomToken(16);
+  const hash = await stretchPasscode(passcode, salt);
+  await writeAuth(env, { salt, hash, iterations: PBKDF2_ITERATIONS, updated_at: new Date().toISOString() });
+  const actor = cleanName(body?.name);
+  const company = await seedCompany(env);
+  audit(env, ctx, actor, "auth.setup", "settings", "auth_passcode", { seeded_company: company?.id || null });
+  const token = await signSession({ n: actor, exp: sessionExpiry(env) }, await hmacKey(hash));
+  return json({ signed_in: true, name: actor, company }, 200, { "set-cookie": sessionCookie(token, request, env) });
+};
+
+const handleLogin = async (request, env) => {
+  const body = await bodyJson(request);
+  const passcode = typeof body?.passcode === "string" ? body.passcode : "";
+  const ip = request.headers.get("CF-Connecting-IP") || "unknown";
+  const throttle = throttleFor(ip);
+  if (throttle.count >= THROTTLE_MAX_ATTEMPTS) {
+    return json({ error: "too_many_attempts", retry_after_seconds: Math.ceil((throttle.reset - Date.now()) / 1000) }, 429);
+  }
+  if (!passcode) return json({ error: "passcode_required" }, 400);
+  const auth = await readAuth(env);
+  if (!auth) return json({ error: "setup_required" }, 409);
+  const candidate = await stretchPasscode(passcode, auth.salt, auth.iterations || PBKDF2_ITERATIONS);
+  if (!safeEqual(candidate, auth.hash)) {
+    throttle.count += 1;
+    return json({ error: "invalid_passcode", attempts_remaining: Math.max(THROTTLE_MAX_ATTEMPTS - throttle.count, 0) }, 401);
+  }
+  throttle.count = 0;
+  const actor = cleanName(body?.name);
+  const token = await signSession({ n: actor, exp: sessionExpiry(env) }, await hmacKey(auth.hash));
+  return json({ signed_in: true, name: actor }, 200, { "set-cookie": sessionCookie(token, request, env) });
+};
+
+const handleLogout = (request) => json({ signed_in: false }, 200, { "set-cookie": clearedCookie(request) });
+
+const handleRotatePasscode = async (request, env, ctx, session) => {
+  const body = await bodyJson(request);
+  const current = typeof body?.current === "string" ? body.current : "";
+  const next = typeof body?.next === "string" ? body.next : "";
+  if (next.length < MIN_PASSCODE_LENGTH || next.length > MAX_PASSCODE_LENGTH) {
+    return json({ error: "passcode_too_short", min_length: MIN_PASSCODE_LENGTH }, 400);
+  }
+  const auth = await readAuth(env);
+  if (!auth) return json({ error: "setup_required" }, 409);
+  const candidate = await stretchPasscode(current, auth.salt, auth.iterations || PBKDF2_ITERATIONS);
+  if (!safeEqual(candidate, auth.hash)) return json({ error: "invalid_current_passcode" }, 401);
+  const salt = randomToken(16);
+  const hash = await stretchPasscode(next, salt);
+  await writeAuth(env, { salt, hash, iterations: PBKDF2_ITERATIONS, updated_at: new Date().toISOString() });
+  audit(env, ctx, session.name, "auth.passcode_rotated", "settings", "auth_passcode", {});
+  const token = await signSession({ n: session.name, exp: sessionExpiry(env) }, await hmacKey(hash));
+  return json({ rotated: true }, 200, { "set-cookie": sessionCookie(token, request, env) });
+};
+
+/* ============================ companies ============================ */
+
+const COMPANY_COLUMNS =
+  "id,name,slug,legal_name,phone,email,address,quotation_prefix,currency,logo_key,letterhead_key,font_name,active,created_at";
+
+/** Seeds "Challenger Cars" (with an active template) when no company exists yet. */
+const seedCompany = async (env) => {
+  const count = await env.DB.prepare("SELECT COUNT(*) AS n FROM companies").first();
+  if (count && Number(count.n) > 0) return null;
+  const id = crypto.randomUUID();
+  await env.DB.prepare(
+    "INSERT INTO companies(id,name,slug,legal_name,phone,email,address,quotation_prefix,currency) VALUES(?,?,?,?,?,?,?,?,?)"
+  ).bind(id, "Challenger Cars", "challenger-cars", "Challenger Cars", "", "", "", "QA-", "AED").run();
+  await env.DB.prepare("INSERT INTO templates(id,company_id,name,version,html,active) VALUES(?,?,?,1,?,1)")
+    .bind(crypto.randomUUID(), id, "Default A4 quotation", DEFAULT_TEMPLATE).run();
+  return { id, name: "Challenger Cars", slug: "challenger-cars" };
+};
+
+const handleCompanyList = async (env) => {
+  const rows = await env.DB.prepare(`SELECT ${COMPANY_COLUMNS} FROM companies ORDER BY active DESC, name`).all();
+  return json({ companies: rows.results || [] });
+};
+
+const text = (value, max) => (typeof value === "string" ? value.trim().slice(0, max) : "");
+
+const handleCompanyCreate = async (request, env, ctx, session) => {
+  const body = await bodyJson(request);
+  const name = text(body?.name, 120);
+  if (name.length < 2) return json({ error: "company_name_required" }, 400);
+  const slug = slugify(body?.slug || name);
+  if (!slug) return json({ error: "invalid_company_slug" }, 400);
+  const id = crypto.randomUUID();
+  try {
+    await env.DB.prepare(
+      "INSERT INTO companies(id,name,slug,legal_name,phone,email,address,quotation_prefix,currency) VALUES(?,?,?,?,?,?,?,?,?)"
+    ).bind(
+      id, name, slug,
+      text(body?.legal_name, 160) || name,
+      text(body?.phone, 40),
+      text(body?.email, 160),
+      text(body?.address, 300),
+      text(body?.quotation_prefix, 12) || "QA-",
+      text(body?.currency, 3).toUpperCase() || "AED"
+    ).run();
+  } catch {
+    return json({ error: "company_slug_already_exists" }, 409);
+  }
+  await env.DB.prepare("INSERT INTO templates(id,company_id,name,version,html,active) VALUES(?,?,?,1,?,1)")
+    .bind(crypto.randomUUID(), id, "Default A4 quotation", DEFAULT_TEMPLATE).run();
+  audit(env, ctx, session.name, "company.created", "company", id, { name, slug });
+  const row = await env.DB.prepare(`SELECT ${COMPANY_COLUMNS} FROM companies WHERE id=?`).bind(id).first();
+  return json({ company: row }, 201);
+};
+
+/** @type {[string, number][]} */
+const COMPANY_TEXT_FIELDS = [
+  ["name", 120], ["legal_name", 160], ["phone", 40], ["email", 160],
+  ["address", 300], ["quotation_prefix", 12], ["currency", 3], ["font_name", 80],
+];
+
+const handleCompanyPatch = async (request, env, ctx, session, companyId) => {
+  const body = await bodyJson(request);
+  if (!body) return json({ error: "invalid_body" }, 400);
+  const existing = await env.DB.prepare("SELECT id FROM companies WHERE id=?").bind(companyId).first();
+  if (!existing) return json({ error: "company_not_found" }, 404);
+  if (typeof body.name === "string" && body.name.trim().length < 2) return json({ error: "company_name_required" }, 400);
+  const sets = [];
+  const values = [];
+  for (const [field, max] of COMPANY_TEXT_FIELDS) {
+    if (typeof body[field] === "string") {
+      const clean = body[field].trim().slice(0, max);
+      sets.push(`${field}=?`);
+      values.push(field === "currency" ? clean.toUpperCase() : clean);
+    }
+  }
+  if (body.active === true || body.active === 1 || body.active === false || body.active === 0) {
+    sets.push("active=?");
+    values.push(body.active === true || body.active === 1 ? 1 : 0);
+  }
+  if (!sets.length) return json({ error: "no_fields_to_update" }, 400);
+  await env.DB.prepare(`UPDATE companies SET ${sets.join(", ")}, updated_at=CURRENT_TIMESTAMP WHERE id=?`)
+    .bind(...values, companyId).run();
+  audit(env, ctx, session.name, "company.updated", "company", companyId, { fields: sets.map((s) => s.replace("=?", "")) });
+  const row = await env.DB.prepare(`SELECT ${COMPANY_COLUMNS} FROM companies WHERE id=?`).bind(companyId).first();
+  return json({ company: row });
+};
+
+const handleCompanyDeactivate = async (env, ctx, session, companyId) => {
+  const result = await env.DB.prepare("UPDATE companies SET active=0, updated_at=CURRENT_TIMESTAMP WHERE id=?")
+    .bind(companyId).run();
+  if (!result.meta || result.meta.changes === 0) return json({ error: "company_not_found" }, 404);
+  audit(env, ctx, session.name, "company.deactivated", "company", companyId, {});
+  return json({ deactivated: true });
+};
+
+/* ============================ templates ============================ */
+
+const handleTemplateList = async (env, companyId) => {
+  const rows = await env.DB.prepare(
+    "SELECT id,name,version,active,created_at,length(html) AS bytes FROM templates WHERE company_id=? ORDER BY version DESC"
+  ).bind(companyId).all();
+  return json({ templates: rows.results || [] });
+};
+
+const handleTemplateGet = async (env, companyId, templateId) => {
+  const row = await env.DB.prepare(
+    "SELECT id,company_id,name,version,active,html,created_at FROM templates WHERE id=? AND company_id=?"
+  ).bind(templateId, companyId).first();
+  return row ? json({ template: row }) : json({ error: "template_not_found" }, 404);
+};
+
+const handleTemplateSave = async (request, env, ctx, session, companyId) => {
+  const body = await bodyJson(request);
+  const html = typeof body?.html === "string" ? body.html : "";
+  if (!html.trim()) return json({ error: "template_html_required" }, 400);
+  if (html.length > MAX_TEMPLATE_BYTES) return json({ error: "template_too_large" }, 413);
+  const company = await env.DB.prepare("SELECT id FROM companies WHERE id=?").bind(companyId).first();
+  if (!company) return json({ error: "company_not_found" }, 404);
+  const versionRow = await env.DB.prepare("SELECT COALESCE(MAX(version),0)+1 AS next FROM templates WHERE company_id=?")
+    .bind(companyId).first();
+  const version = Number(versionRow?.next) || 1;
+  const id = crypto.randomUUID();
+  const name = text(body?.name, 100) || `Version ${version}`;
+  const activate = body?.activate !== false;
+  const statements = [];
+  if (activate) statements.push(env.DB.prepare("UPDATE templates SET active=0 WHERE company_id=?").bind(companyId));
+  statements.push(
+    env.DB.prepare("INSERT INTO templates(id,company_id,name,version,html,active) VALUES(?,?,?,?,?,?)")
+      .bind(id, companyId, name, version, html, activate ? 1 : 0)
+  );
+  await env.DB.batch(statements);
+  audit(env, ctx, session.name, "template.saved", "template", id, { company_id: companyId, version, active: activate });
+  return json({ template: { id, name, version, active: activate } }, 201);
+};
+
+const handleTemplateActivate = async (env, ctx, session, templateId) => {
+  const row = await env.DB.prepare("SELECT id,company_id FROM templates WHERE id=?").bind(templateId).first();
+  if (!row) return json({ error: "template_not_found" }, 404);
   await env.DB.batch([
-   env.DB.prepare("UPDATE templates SET active=0 WHERE company_id=?").bind(b.company_id),
-   env.DB.prepare("INSERT INTO templates(id,company_id,name,version,html,active) VALUES(?,?,?,?,?,1)").bind(id,b.company_id,b.name.trim().slice(0,100),version,b.html)
+    env.DB.prepare("UPDATE templates SET active=0 WHERE company_id=?").bind(row.company_id),
+    env.DB.prepare("UPDATE templates SET active=1 WHERE id=?").bind(templateId),
   ]);
-  return json({template:{id,name:b.name.trim(),version,active:true}},201);
- }
- if(url.pathname==="/api/quotations" && request.method==="GET"){
-  const companyId=url.searchParams.get("company_id");if(!companyId)return json({error:"company_id_required"},400);
-  const q=url.searchParams.get("q")||"",limit=Math.min(Math.max(Number(url.searchParams.get("limit")||50),1),100);
-  const rows=await env.DB.prepare("SELECT id,quote_number,quote_date,model,year,chassis,amount_cents,created_at FROM quotations WHERE company_id=? AND deleted_at IS NULL AND (quote_number LIKE ? OR model LIKE ? OR chassis LIKE ?) ORDER BY quote_date DESC,created_at DESC LIMIT ?")
-   .bind(companyId,"%"+q+"%","%"+q+"%","%"+q+"%",limit).all();
-  return json({quotations:rows.results});
- }
- if(url.pathname==="/api/quotations" && request.method==="POST"){
-  const b=await bodyJson(request);
-  if(!b||!b.company_id||typeof b.model!=="string"||!b.model.trim()||typeof b.year!=="string"||!b.year.trim()||typeof b.chassis!=="string"||!b.chassis.trim())return json({error:"company_model_year_and_chassis_required"},400);
-  const amount=Number(b.amount);if(!Number.isFinite(amount)||amount<0||amount>99999999.99)return json({error:"invalid_amount"},400);
-  const date=typeof b.quote_date==="string"?b.quote_date:new Date().toISOString().slice(0,10);
-  if(!/^\\d{4}-\\d{2}-\\d{2}$/.test(date)||Number.isNaN(Date.parse(date+"T00:00:00Z")))return json({error:"invalid_quote_date"},400);
-  const company=await env.DB.prepare("SELECT * FROM companies WHERE id=? AND active=1").bind(b.company_id).first();
-  if(!company)return json({error:"company_not_found"},404);
-  const cents=Math.round(amount*100),whole=Math.floor(cents/100),fraction=cents%100;
-  const words=numberWords(whole)+(fraction?" and "+numberWords(fraction)+" fils":"");
-  const id=crypto.randomUUID(),period=date.slice(0,4),prefix=company.quotation_prefix||"QA-";
-  const template=await env.DB.prepare("SELECT id,html FROM templates WHERE company_id=? AND active=1 ORDER BY version DESC LIMIT 1").bind(company.id).first();
-  const templateHtml=template?.html||DEFAULT_TEMPLATE;
-  const sequenceUpdate=env.DB.prepare("INSERT INTO quote_sequences(company_id,period,last_number) VALUES(?,?,1) ON CONFLICT(company_id,period) DO UPDATE SET last_number=last_number+1").bind(company.id,period);
-  const sequenceRead=env.DB.prepare("SELECT last_number FROM quote_sequences WHERE company_id=? AND period=?").bind(company.id,period);
-  const results=await env.DB.batch([sequenceUpdate,sequenceRead]);
-  const serial=String(results[1].results?.[0]?.last_number||1).padStart(5,"0");
-  const quoteNumber=typeof b.quote_number==="string"&&b.quote_number.trim()?b.quote_number.trim():prefix+period+"-"+serial;
-  const companySnapshot={name:company.name,legal_name:company.legal_name,address:company.address,phone:company.phone,email:company.email,currency:company.currency};
-  try{
-   await env.DB.prepare("INSERT INTO quotations(id,company_id,template_id,quote_number,quote_date,model,year,chassis,amount_cents,amount_words,template_html_snapshot,company_snapshot_json) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)")
-    .bind(id,company.id,template?.id||null,quoteNumber,date,b.model.trim().slice(0,120),b.year.trim().slice(0,20),b.chassis.trim().slice(0,120),cents,words,templateHtml,JSON.stringify(companySnapshot)).run();
-  }catch(e){return json({error:"quotation_number_already_exists_or_save_failed"},409);}
-  return json({quotation:{id,quote_number:quoteNumber,quote_date:date,model:b.model.trim(),year:b.year.trim(),chassis:b.chassis.trim(),amount_cents:cents,amount_words:words}},201);
- }
- const printPrefix="/api/quotations/",printSuffix="/print";
- const printId=url.pathname.startsWith(printPrefix)&&url.pathname.endsWith(printSuffix)?url.pathname.slice(printPrefix.length,-printSuffix.length):null;
- if(printId && request.method==="GET"){
-  const row=await env.DB.prepare("SELECT q.*,c.name AS current_company_name FROM quotations q JOIN companies c ON c.id=q.company_id WHERE q.id=? AND q.deleted_at IS NULL").bind(printId).first();
-  if(!row)return json({error:"quotation_not_found"},404);
-  let company={};try{company=JSON.parse(row.company_snapshot_json||"{}")}catch{}
-  const fields={quote_number:row.quote_number,quote_date:row.quote_date,model:row.model,year:row.year,chassis:row.chassis,amount:(row.amount_cents/100).toFixed(2),amount_words:row.amount_words,currency:company.currency||"AED",company_name:company.legal_name||company.name||row.current_company_name,company_address:company.address||"",company_phone:company.phone||"",company_email:company.email||""};
-  return new Response(renderQuote(row.template_html_snapshot||DEFAULT_TEMPLATE,fields),{headers:{"content-type":"text/html; charset=utf-8","cache-control":"no-store","content-security-policy":"default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; base-uri 'none'; form-action 'none'"}});
- }
- const detailPrefix="/api/quotations/",detailId=url.pathname.startsWith(detailPrefix)?url.pathname.slice(detailPrefix.length):null;
- if(detailId && !detailId.includes("/") && request.method==="GET"){
-  const row=await env.DB.prepare("SELECT id,company_id,quote_number,quote_date,model,year,chassis,amount_cents,amount_words,created_at FROM quotations WHERE id=? AND deleted_at IS NULL").bind(detailId).first();
-  return row?json({quotation:row}):json({error:"quotation_not_found"},404);
- }
- if(detailId && !detailId.includes("/") && request.method==="DELETE"){
-  await env.DB.prepare("UPDATE quotations SET deleted_at=CURRENT_TIMESTAMP WHERE id=? AND deleted_at IS NULL").bind(detailId).run();
-  return json({deleted:true});
- }
- if(url.pathname==="/api/companies" && request.method==="DELETE"){
-  const id=url.searchParams.get("id");if(!id)return json({error:"company_id_required"},400);
-  await env.DB.prepare("UPDATE companies SET active=0,updated_at=CURRENT_TIMESTAMP WHERE id=?").bind(id).run();
-  return json({deactivated:true});
- }
- return json({error:"not_found"},404);
+  audit(env, ctx, session.name, "template.activated", "template", templateId, { company_id: row.company_id });
+  return json({ activated: templateId });
+};
+
+/* =========================== quotations =========================== */
+
+const decorate = (row) => ({
+  ...row,
+  amount: formatMoney(row.amount_cents),
+  quote_date_text: formatDateDMY(row.quote_date),
+});
+
+const handleQuotationList = async (env, url) => {
+  const companyId = url.searchParams.get("company_id");
+  if (!companyId) return json({ error: "company_id_required" }, 400);
+  const search = (url.searchParams.get("q") || "").trim().slice(0, 80);
+  const limit = Math.min(Math.max(Number(url.searchParams.get("limit")) || 50, 1), 100);
+  const like = `%${search}%`;
+  const rows = await env.DB.prepare(
+    "SELECT id,quote_number,quote_date,model,year,chassis,amount_cents,amount_words,created_at FROM quotations " +
+    "WHERE company_id=? AND deleted_at IS NULL " +
+    "AND (quote_number LIKE ? OR model LIKE ? OR chassis LIKE ? OR year LIKE ?) " +
+    "ORDER BY quote_date DESC, created_at DESC LIMIT ?"
+  ).bind(companyId, like, like, like, like, limit).all();
+  const total = await env.DB.prepare(
+    "SELECT COUNT(*) AS n FROM quotations WHERE company_id=? AND deleted_at IS NULL"
+  ).bind(companyId).first();
+  return json({ quotations: (rows.results || []).map(decorate), total: Number(total?.n || 0) });
+};
+
+/** Read-only numbering preview: never advances the sequence. */
+const peekNextNumber = async (env, company, date) => {
+  const period = date.slice(0, 4);
+  const row = await env.DB.prepare("SELECT last_number FROM quote_sequences WHERE company_id=? AND period=?")
+    .bind(company.id, period).first();
+  const next = Number(row?.last_number || 0) + 1;
+  const prefix = company.quotation_prefix || "QA-";
+  return { period, next_serial: next, quote_number: `${prefix}${period}-${String(next).padStart(5, "0")}` };
+};
+
+const handleNextNumber = async (env, url) => {
+  const companyId = url.searchParams.get("company_id");
+  const date = url.searchParams.get("date") || todayIso();
+  if (!companyId) return json({ error: "company_id_required" }, 400);
+  if (!validIsoDate(date)) return json({ error: "invalid_quote_date" }, 400);
+  const company = await env.DB.prepare("SELECT id,quotation_prefix FROM companies WHERE id=?").bind(companyId).first();
+  if (!company) return json({ error: "company_not_found" }, 404);
+  return json({ ...(await peekNextNumber(env, company, date)), date });
+};
+
+const allocateSerial = async (env, companyId, period) => {
+  const results = await env.DB.batch([
+    env.DB.prepare(
+      "INSERT INTO quote_sequences(company_id,period,last_number) VALUES(?,?,1) " +
+      "ON CONFLICT(company_id,period) DO UPDATE SET last_number=last_number+1"
+    ).bind(companyId, period),
+    env.DB.prepare("SELECT last_number FROM quote_sequences WHERE company_id=? AND period=?").bind(companyId, period),
+  ]);
+  return Number(results[1]?.results?.[0]?.last_number || 1);
+};
+
+const handleQuotationCreate = async (request, env, ctx, session) => {
+  const body = await bodyJson(request);
+  if (!body) return json({ error: "invalid_body" }, 400);
+  const companyId = text(body.company_id, 48);
+  if (!companyId) return json({ error: "company_id_required" }, 400);
+  const model = text(body.model, 120);
+  const year = text(body.year, 20);
+  const chassis = text(body.chassis, 120);
+  if (!model || !year || !chassis) return json({ error: "model_year_and_chassis_required" }, 400);
+  const cents = parseAmountToCents(body.amount);
+  if (cents === null) return json({ error: "invalid_amount" }, 400);
+  const date = text(body.quote_date, 10) || todayIso();
+  if (!validIsoDate(date)) return json({ error: "invalid_quote_date" }, 400);
+  const company = await env.DB.prepare("SELECT * FROM companies WHERE id=? AND active=1").bind(companyId).first();
+  if (!company) return json({ error: "company_not_found" }, 404);
+  const period = date.slice(0, 4);
+  const prefix = company.quotation_prefix || "QA-";
+  let quoteNumber = text(body.quote_number, 60);
+  if (!quoteNumber) {
+    for (let attempt = 0; attempt < 8 && !quoteNumber; attempt++) {
+      const serial = await allocateSerial(env, company.id, period);
+      const candidate = `${prefix}${period}-${String(serial).padStart(5, "0")}`;
+      const taken = await env.DB.prepare("SELECT 1 AS taken FROM quotations WHERE company_id=? AND quote_number=?")
+        .bind(company.id, candidate).first();
+      if (!taken) quoteNumber = candidate;
+    }
+    if (!quoteNumber) return json({ error: "numbering_exhausted" }, 409);
+  }
+  const template = await env.DB.prepare(
+    "SELECT id,html FROM templates WHERE company_id=? AND active=1 ORDER BY version DESC LIMIT 1"
+  ).bind(company.id).first();
+  const amountWords = amountWordsFromCents(cents);
+  const snapshot = {
+    name: company.name, legal_name: company.legal_name, address: company.address,
+    phone: company.phone, email: company.email, currency: company.currency,
+    letterhead_url: company.letterhead_key ? `/api/companies/${company.id}/letterhead` : LETTERHEAD_URL,
+  };
+  const id = crypto.randomUUID();
+  try {
+    await env.DB.prepare(
+      "INSERT INTO quotations(id,company_id,template_id,quote_number,quote_date,model,year,chassis," +
+      "amount_cents,amount_words,template_html_snapshot,company_snapshot_json) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)"
+    ).bind(id, company.id, template?.id || null, quoteNumber, date, model, year, chassis, cents, amountWords,
+      template?.html || DEFAULT_TEMPLATE, JSON.stringify(snapshot)).run();
+  } catch {
+    return json({ error: "quotation_number_already_exists" }, 409);
+  }
+  audit(env, ctx, session.name, "quotation.created", "quotation", id,
+    { quote_number: quoteNumber, company_id: company.id, amount_cents: cents });
+  return json({
+    quotation: {
+      id, company_id: company.id, quote_number: quoteNumber, quote_date: date,
+      quote_date_text: formatDateDMY(date), model, year, chassis,
+      amount_cents: cents, amount: formatMoney(cents), amount_words: amountWords,
+      currency: company.currency || "AED",
+    },
+  }, 201);
+};
+
+const QUOTATION_COLUMNS =
+  "id,company_id,template_id,quote_number,quote_date,model,year,chassis,amount_cents,amount_words,company_snapshot_json,created_at,updated_at";
+
+const quotationById = (env, id) =>
+  env.DB.prepare(`SELECT ${QUOTATION_COLUMNS} FROM quotations WHERE id=? AND deleted_at IS NULL`).bind(id).first();
+
+const handleQuotationGet = async (env, id) => {
+  const row = await quotationById(env, id);
+  if (!row) return json({ error: "quotation_not_found" }, 404);
+  const company = await env.DB.prepare(`SELECT ${COMPANY_COLUMNS} FROM companies WHERE id=?`).bind(row.company_id).first();
+  const snapshot = parseJson(row.company_snapshot_json);
+  return json({
+    quotation: {
+      ...decorate(row),
+      currency: snapshot.currency || company?.currency || "AED",
+      company: company || null,
+    },
+  });
+};
+
+const handleQuotationPatch = async (request, env, ctx, session, id) => {
+  const body = await bodyJson(request);
+  if (!body) return json({ error: "invalid_body" }, 400);
+  const row = await quotationById(env, id);
+  if (!row) return json({ error: "quotation_not_found" }, 404);
+  const sets = [];
+  const values = [];
+  if (typeof body.quote_date === "string") {
+    if (!validIsoDate(body.quote_date)) return json({ error: "invalid_quote_date" }, 400);
+    sets.push("quote_date=?");
+    values.push(body.quote_date);
+  }
+  for (const field of ["model", "year", "chassis"]) {
+    if (typeof body[field] === "string" && body[field].trim()) {
+      sets.push(`${field}=?`);
+      values.push(body[field].trim().slice(0, field === "year" ? 20 : 120));
+    }
+  }
+  if (body.amount !== undefined) {
+    const cents = parseAmountToCents(body.amount);
+    if (cents === null) return json({ error: "invalid_amount" }, 400);
+    sets.push("amount_cents=?", "amount_words=?");
+    values.push(cents, amountWordsFromCents(cents));
+  }
+  if (typeof body.quote_number === "string") {
+    const candidate = body.quote_number.trim().slice(0, 60);
+    if (candidate && candidate !== row.quote_number) {
+      sets.push("quote_number=?");
+      values.push(candidate);
+    }
+  }
+  if (!sets.length) return json({ error: "no_fields_to_update" }, 400);
+  try {
+    await env.DB.prepare(`UPDATE quotations SET ${sets.join(", ")}, updated_at=CURRENT_TIMESTAMP WHERE id=?`)
+      .bind(...values, id).run();
+  } catch {
+    return json({ error: "quotation_number_already_exists" }, 409);
+  }
+  audit(env, ctx, session.name, "quotation.updated", "quotation", id, { fields: sets.map((s) => s.replace("=?", "")) });
+  return handleQuotationGet(env, id);
+};
+
+const handleQuotationCancel = async (env, ctx, session, id) => {
+  const result = await env.DB.prepare(
+    "UPDATE quotations SET deleted_at=CURRENT_TIMESTAMP WHERE id=? AND deleted_at IS NULL"
+  ).bind(id).run();
+  if (!result.meta || result.meta.changes === 0) return json({ error: "quotation_not_found" }, 404);
+  audit(env, ctx, session.name, "quotation.cancelled", "quotation", id, {});
+  return json({ cancelled: true });
+};
+
+/* ============================== print ============================== */
+
+const buildPrintFields = (row) => {
+  const snapshot = parseJson(row.company_snapshot_json);
+  return {
+    quote_number: row.quote_number,
+    quote_date: formatDateDMY(row.quote_date),
+    model: row.model,
+    year: row.year,
+    chassis: row.chassis,
+    currency: snapshot.currency || "AED",
+    amount: formatMoney(row.amount_cents),
+    amount_words: row.amount_words,
+    company_name: snapshot.legal_name || snapshot.name || row.company_name || "",
+    company_address: snapshot.address || "",
+    company_phone: snapshot.phone || "",
+    company_email: snapshot.email || "",
+    letterhead_url: snapshot.letterhead_url || LETTERHEAD_URL,
+  };
+};
+
+const handlePrint = async (env, url, id) => {
+  const row = await env.DB.prepare(
+    "SELECT q.*, c.name AS company_name FROM quotations q JOIN companies c ON c.id=q.company_id " +
+    "WHERE q.id=? AND q.deleted_at IS NULL"
+  ).bind(id).first();
+  if (!row) return json({ error: "quotation_not_found" }, 404);
+  const autoprint = ["1", "true", "yes"].includes((url.searchParams.get("print") || "").toLowerCase());
+  let html = renderQuote(row.template_html_snapshot || DEFAULT_TEMPLATE, buildPrintFields(row));
+  if (autoprint) {
+    const tag = `<script>${AUTOPRINT_SCRIPT}</script>`;
+    html = html.includes("</body>") ? html.replace("</body>", tag + "</body>") : html + tag;
+  }
+  const scriptSrc = autoprint ? `'sha256-${await scriptHash()}'` : "'none'";
+  const csp = [
+    "default-src 'none'",
+    "img-src 'self' data:",
+    "style-src 'unsafe-inline'",
+    "font-src 'self' data:",
+    `script-src ${scriptSrc}`,
+    "base-uri 'none'",
+    "form-action 'none'",
+    "frame-ancestors 'self'",
+  ].join("; ");
+  return new Response(html, {
+    headers: {
+      "content-type": "text/html; charset=utf-8",
+      "cache-control": "no-store",
+      "content-security-policy": csp,
+      "x-content-type-options": "nosniff",
+    },
+  });
+};
+
+/* ============================== export ============================== */
+
+const csvCell = (value) => `"${String(value ?? "").replace(/"/g, '""')}"`;
+
+const handleCsvExport = async (env, url) => {
+  const companyId = url.searchParams.get("company_id");
+  if (!companyId) return json({ error: "company_id_required" }, 400);
+  const company = await env.DB.prepare("SELECT name,currency FROM companies WHERE id=?").bind(companyId).first();
+  if (!company) return json({ error: "company_not_found" }, 404);
+  const rows = await env.DB.prepare(
+    "SELECT quote_number,quote_date,model,year,chassis,amount_cents,amount_words,created_at " +
+    "FROM quotations WHERE company_id=? AND deleted_at IS NULL ORDER BY quote_date DESC, created_at DESC"
+  ).bind(companyId).all();
+  const lines = ["quotation,date,model,year,chassis,amount,currency,amount_words,created"];
+  for (const row of rows.results || []) {
+    lines.push([
+      row.quote_number, row.quote_date, row.model, row.year, row.chassis,
+      (Number(row.amount_cents) / 100).toFixed(2), company.currency, row.amount_words, row.created_at,
+    ].map(csvCell).join(","));
+  }
+  return new Response(lines.join("\r\n"), {
+    headers: {
+      "content-type": "text/csv; charset=utf-8",
+      "content-disposition": `attachment; filename="quotations-${todayIso()}.csv"`,
+      "cache-control": "no-store",
+    },
+  });
+};
+
+/* ============================== router ============================== */
+
+const KNOWN_RESOURCES = new Set(["companies", "templates", "quotations", "export", "auth"]);
+
+const handleHealth = async (env) => {
+  try {
+    const row = await env.DB.prepare("SELECT 1 AS ok").first();
+    return json({ ok: row?.ok === 1, service: "challenger-quotation-platform", version: "1.0.0" });
+  } catch {
+    return json({ ok: false, error: "database_unavailable" }, 503);
+  }
+};
+
+async function route(request, env, ctx, url) {
+  const method = request.method;
+  const path = url.pathname;
+
+  if (path === "/api/health" && method === "GET") return handleHealth(env);
+  if (path === "/api/auth/status" && method === "GET") return authStatus(request, env);
+  if (path === "/api/setup" && method === "POST") return handleSetup(request, env, ctx);
+  if (path === "/api/auth/login" && method === "POST") return handleLogin(request, env);
+  if (path === "/api/auth/logout" && method === "POST") return handleLogout(request);
+
+  const [resource, id, action, child] = path.slice("/api/".length).split("/").filter(Boolean);
+
+  if (!KNOWN_RESOURCES.has(resource)) return json({ error: "not_found", path }, 404);
+
+  const session = await currentSession(request, env);
+  if (!session) return json({ error: "unauthorized" }, 401);
+
+  if (path === "/api/auth/passcode" && method === "POST") return handleRotatePasscode(request, env, ctx, session);
+
+  if (resource === "companies") {
+    if (!id && method === "GET") return handleCompanyList(env);
+    if (!id && method === "POST") return handleCompanyCreate(request, env, ctx, session);
+    if (id && !action && method === "PATCH") return handleCompanyPatch(request, env, ctx, session, id);
+    if (id && !action && method === "DELETE") return handleCompanyDeactivate(env, ctx, session, id);
+    if (id && action === "templates" && !child) {
+      if (method === "GET") return handleTemplateList(env, id);
+      if (method === "POST") return handleTemplateSave(request, env, ctx, session, id);
+    }
+    if (id && action === "templates" && child && method === "GET") return handleTemplateGet(env, id, child);
+  }
+
+  if (resource === "templates" && id && action === "activate" && method === "POST") {
+    return handleTemplateActivate(env, ctx, session, id);
+  }
+
+  if (resource === "quotations") {
+    if (!id && method === "GET") return handleQuotationList(env, url);
+    if (!id && method === "POST") return handleQuotationCreate(request, env, ctx, session);
+    if (id === "next-number" && method === "GET") return handleNextNumber(env, url);
+    if (id && !action && method === "GET") return handleQuotationGet(env, id);
+    if (id && !action && method === "PATCH") return handleQuotationPatch(request, env, ctx, session, id);
+    if (id && !action && method === "DELETE") return handleQuotationCancel(env, ctx, session, id);
+    if (id && action === "print" && method === "GET") return handlePrint(env, url, id);
+  }
+
+  if (resource === "export" && id === "quotations.csv" && method === "GET") return handleCsvExport(env, url);
+
+  return json({ error: "not_found", path }, 404);
 }
-export default {async fetch(request,env){
- const url=new URL(request.url);
- if(url.pathname.startsWith("/api/")){
-  try{return await handleApi(request,env,url);}catch(e){return json({error:"internal_error"},500);}
- }
- return new Response("<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>Challenger Quotation Platform</title><style>\n:root{font-family:Inter,system-ui,sans-serif;color:#172033;background:#f3f5f8}*{box-sizing:border-box}body{margin:0}.shell{max-width:1000px;margin:48px auto;padding:0 22px}header{display:flex;justify-content:space-between;align-items:center;gap:20px}.eyebrow{font-size:11px;letter-spacing:.16em;color:#64748b;font-weight:700}h1{font-size:32px;margin:8px 0}.muted{color:#667085}.panel{background:#fff;border:1px solid #e5e9f0;border-radius:14px;padding:22px;margin:18px 0}input,select{width:100%;padding:11px;border:1px solid #d0d5dd;border-radius:8px;margin:6px 0 14px}label{font-size:13px;font-weight:600}button{border:0;background:#172b4d;color:white;border-radius:8px;padding:11px 16px;cursor:pointer;font-weight:600}.secondary{background:#e9edf3;color:#172033}.row{display:flex;gap:12px;align-items:center}.row>*{flex:1}.hidden{display:none}.notice{padding:10px;background:#fef3f2;color:#b42318;border-radius:8px;margin:12px 0}.company{padding:14px;border:1px solid #eaecf0;border-radius:10px;margin:10px 0;display:flex;justify-content:space-between}.pill{font-size:12px;color:#17663b;background:#e5f5ec;padding:6px 10px;border-radius:20px}.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}@media(max-width:650px){.grid{grid-template-columns:1fr}.row{display:block}header{align-items:flex-start;flex-direction:column}}\n</style></head><body><main class=\"shell\"><header><div><p class=\"eyebrow\">CHALLENGER QUOTATION PLATFORM</p><h1>Administration</h1><p class=\"muted\">Central control for company quotation workspaces.</p></div><span class=\"pill\" id=\"status\">Cloudflare Worker</span></header>\n<section class=\"panel\" id=\"login\"><h2>Administrator sign in</h2><form id=\"loginForm\"><label>Email</label><input name=\"email\" type=\"email\" required autocomplete=\"username\"><label>Password</label><input name=\"password\" type=\"password\" required autocomplete=\"current-password\"><button>Sign in</button></form><p id=\"loginError\" class=\"notice hidden\"></p><p class=\"muted\">Initial setup must be completed using the protected bootstrap API.</p></section>\n<section class=\"panel hidden\" id=\"dashboard\"><div class=\"row\"><h2>Companies</h2><button class=\"secondary\" id=\"logout\">Sign out</button></div><form id=\"companyForm\"><div class=\"grid\"><div><label>Company name</label><input name=\"name\" required minlength=\"2\"></div><div><label>URL slug (optional)</label><input name=\"slug\" placeholder=\"company-name\"></div><div><label>Quotation prefix</label><input name=\"quotation_prefix\" value=\"QA-\"></div><div><label>Currency</label><input name=\"currency\" value=\"AED\" maxlength=\"3\"></div><div><label>Email</label><input name=\"email\" type=\"email\"></div><div><label>Phone</label><input name=\"phone\"></div></div><label>Address</label><input name=\"address\"><button>Add company</button></form><p id=\"companyError\" class=\"notice hidden\"></p><div id=\"companies\"></div></section>\n<script>\nconst $=s=>document.querySelector(s);\nasync function api(path,options={}){const r=await fetch(path,{...options,headers:{\"content-type\":\"application/json\",...(options.headers||{})},credentials:\"same-origin\"});const d=await r.json();if(!r.ok)throw Error(d.error||\"Request failed\");return d}\nasync function load(){try{const m=await api(\"/api/auth/me\");$(\"#login\").classList.toggle(\"hidden\",m.authenticated);$(\"#dashboard\").classList.toggle(\"hidden\",!m.authenticated);if(m.authenticated)await companies()}catch(e){$(\"#loginError\").textContent=\"Application API unavailable\";$(\"#loginError\").classList.remove(\"hidden\")}}\nasync function companies(){const d=await api(\"/api/companies\");$(\"#companies\").innerHTML=d.companies.map(c=>'<div class=\"company\"><div><b>'+esc(c.name)+'</b><div class=\"muted\">'+esc(c.slug)+' · '+esc(c.quotation_prefix)+' · '+esc(c.currency)+'</div></div><span class=\"pill\">'+(c.active?'Active':'Inactive')+'</span></div>').join(\"\")||'<p class=\"muted\">No companies created yet.</p>'}\nfunction esc(s){return String(s||\"\").replace(/[&<>\"']/g,c=>({\"&\":\"&amp;\",\"<\":\"&lt;\",\">\":\"&gt;\",'\"':\"&quot;\",\"'\":\"&#39;\"}[c]))}\n$(\"#loginForm\").addEventListener(\"submit\",async e=>{e.preventDefault();$(\"#loginError\").classList.add(\"hidden\");const f=new FormData(e.target);try{await api(\"/api/auth/login\",{method:\"POST\",body:JSON.stringify(Object.fromEntries(f))});e.target.reset();await load()}catch(err){$(\"#loginError\").textContent=err.message;$(\"#loginError\").classList.remove(\"hidden\")}});\n$(\"#companyForm\").addEventListener(\"submit\",async e=>{e.preventDefault();$(\"#companyError\").classList.add(\"hidden\");try{await api(\"/api/companies\",{method:\"POST\",body:JSON.stringify(Object.fromEntries(new FormData(e.target)))});e.target.reset();e.target.querySelector('[name=quotation_prefix]').value=\"QA-\";e.target.querySelector('[name=currency]').value=\"AED\";await companies()}catch(err){$(\"#companyError\").textContent=err.message;$(\"#companyError\").classList.remove(\"hidden\")}});\n$(\"#logout\").addEventListener(\"click\",async()=>{await api(\"/api/auth/logout\",{method:\"POST\"});await load()});load();\n</script></main></body></html>",{headers:{"content-type":"text/html; charset=utf-8","cache-control":"no-store"}});
-}};
+
+export default {
+  /**
+   * @param {Request} request
+   * @param {{DB:D1Database,ASSETS?:R2Bucket,SESSION_HOURS?:string}} env
+   * @param {ExecutionContext} ctx
+   */
+  async fetch(request, env, ctx) {
+    const url = new URL(request.url);
+    if (!url.pathname.startsWith("/api/")) return json({ error: "not_found" }, 404);
+    if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: { allow: "GET, POST, PATCH, DELETE, OPTIONS" } });
+    try {
+      return await route(request, env, ctx, url);
+    } catch (error) {
+      if (error && error.status) return json({ error: error.code || "error", ...(error.details || {}) }, error.status);
+      console.error(JSON.stringify({
+        event: "request_failed",
+        path: url.pathname,
+        method: request.method,
+        message: error?.message || String(error),
+        stack: String(error?.stack || "").split("\n").slice(0, 4),
+      }));
+      return json({ error: "internal_error" }, 500);
+    }
+  },
+};
+
+
+

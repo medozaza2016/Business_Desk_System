@@ -3,6 +3,15 @@ main = "src/index.js"
 compatibility_date = "2026-11-05"
 workers_dev = true
 
+# HTML templates are imported as raw text modules (wrangler's default rule
+# already maps **/*.html to Text, so no custom rule is needed here).
+
+[observability]
+enabled = true
+
+[vars]
+SESSION_HOURS = "12"
+
 [[d1_databases]]
 binding = "DB"
 database_name = "challenger-quotation-db"
