@@ -4,7 +4,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="color-scheme" content="light">
-<title>Marshall Auctions Quotation {{quote_number}}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Kufi+Arabic:wght@500;600;700;800;900&family=Noto+Naskh+Arabic:wght@500;600;700;800;900&display=swap" rel="stylesheet">
+<title>Marshal Auctions Quotation {{quote_number}}</title>
 <style>
   @page { size: A4 portrait; margin: 0; }
   * { box-sizing: border-box; }
@@ -25,14 +28,16 @@
     background: #fff;
   }
 
-  /* Marshall Auctions brand artwork recreated as inline SVG, so no external letterhead
-     image or remote asset is required. */
+  /* Company branding is supplied through the uploaded logo URL. */
   .brand-header {
     position: absolute;
     inset: 0 0 auto;
     height: 53mm;
     text-align: center;
   }
+  /* The uploaded company logo takes over as soon as one exists: logo_state
+     renders "has-logo" or "no-logo", so the built-in winged-C below stays as
+     the fallback mark without any scripting. */
   .brand-logo {
     position: absolute;
     top: 0mm;
@@ -40,6 +45,13 @@
     width: 66mm;
     height: 29mm;
     transform: translateX(-50%);
+  }
+  .brand-logo img {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
   }
   .brand-ar {
     position: absolute;
@@ -52,7 +64,7 @@
     font-weight: 900;
     white-space: nowrap;
   }
-  .brand-ar .accent, .brand-en .accent { color: #c8a65a; }
+  .brand-ar .accent, .brand-en .accent { color: #10234F; }
   .brand-en {
     position: absolute;
     top: 41.2mm;
@@ -72,7 +84,7 @@
     width: 159.791mm;
     height: 14.345mm;
     border-radius: 8.368mm;
-    background: #edf1f5;
+    background: #e9e9e9;
     display: grid;
     grid-template-columns: 1fr 1.594mm 1fr;
     align-items: center;
@@ -83,7 +95,7 @@
   .title-divider {
     width: 1.594mm;
     height: 10.759mm;
-    background: #17365d;
+    background: #10234F;
     justify-self: center;
   }
   .title-ar {
@@ -104,7 +116,7 @@
   }
   .meta-box {
     height: 9.962mm;
-    border: .398mm solid #17365d;
+    border: .398mm solid #10234F;
     border-radius: 2.989mm;
     background: #fff;
     display: flex;
@@ -115,7 +127,7 @@
   .meta-label { font-size: 4.981mm; font-weight: 800; }
   .meta-value {
     margin-left: 2.2mm;
-    color: #17365d;
+    color: #10234F;
     font-size: 5.15mm;
     font-weight: 900;
   }
@@ -126,7 +138,6 @@
     font-size: 4.55mm;
   }
   .meta-box:first-child .meta-value { margin-left: 1.4mm; }
-
   .intro {
     position: absolute;
     top: 85.474mm;
@@ -150,7 +161,7 @@
     top: 107.192mm;
     width: 180.712mm;
     height: 32.3mm;
-    border: .398mm solid #17365d;
+    border: .398mm solid #10234F;
     border-radius: 3.387mm;
     overflow: hidden;
     background: #fff;
@@ -160,13 +171,13 @@
     grid-template-columns: 42.239mm 1fr 42.837mm;
     height: 10.2mm;
   }
-  .vrow + .vrow { border-top: .398mm solid #17365d; }
+  .vrow + .vrow { border-top: .398mm solid #10234F; }
   .vlabel {
     display: flex;
     align-items: center;
     padding: 0 2.8mm;
-    border-right: .398mm solid #17365d;
-    background: #e9eef4;
+    border-right: .398mm solid #10234F;
+    background: #f3f0e9;
     font-size: 5mm;
     font-weight: 800;
     white-space: nowrap;
@@ -186,8 +197,8 @@
     align-items: center;
     justify-content: flex-start;
     padding: 0 1.8mm;
-    border-left: .398mm solid #17365d;
-    background: #e9eef4;
+    border-left: .398mm solid #10234F;
+    background: #f3f0e9;
     direction: rtl;
     font-size: 3.65mm;
     font-weight: 800;
@@ -200,7 +211,7 @@
     top: 146.044mm;
     width: 181.110mm;
     height: 13.548mm;
-    border: .398mm solid #17365d;
+    border: .398mm solid #10234F;
     border-radius: 3.786mm;
     display: grid;
     grid-template-columns: 1fr 65.750mm 1fr;
@@ -217,7 +228,7 @@
   .amount {
     height: 12.751mm;
     border-radius: 5.579mm;
-    background: #17365d;
+    background: #10234F;
     color: #fff;
     display: flex;
     align-items: center;
@@ -235,7 +246,7 @@
     width: 186.888mm;
     height: 38.852mm;
     border-radius: 7.571mm;
-    background: #f3f5f8;
+    background: #f5f4f0;
     padding: 2.391mm 8.966mm;
   }
   .statement-ar {
@@ -261,7 +272,7 @@
     right: 8.966mm;
     top: 20.123mm;
     height: .598mm;
-    background: #17365d;
+    background: #10234F;
   }
   .statement-en {
     position: absolute;
@@ -288,15 +299,11 @@
     height: 92mm;
     background: #fff;
   }
-  .watermark {
-    position: absolute;
-    top: 1mm;
-    left: 50%;
-    width: 95mm;
-    height: 36mm;
-    transform: translateX(-50%);
-    opacity: .22;
-  }
+  /* Faint brand watermark: the uploaded company logo at 10% opacity. It sits in
+     the free band between the signature row (ends at 48.7mm) and the contact
+     block (starts at 68mm), because this sheet moved both notes to the top of
+     the footer. Nothing is drawn while the company has no logo: the token
+     resolves to a transparent 1x1 pixel. */
   .note-en {
     position: absolute;
     left: 12.5mm;
@@ -306,7 +313,7 @@
     line-height: 1.18;
     font-weight: 700;
   }
-  .note-title { color: #17365d; font-size: 5.6mm; font-weight: 900; margin-bottom: 1mm; }
+  .note-title { color: #10234F; font-size: 5.6mm; font-weight: 900; margin-bottom: 1mm; }
   .note-en p { margin: 0; }
   .note-ar {
     position: absolute;
@@ -323,13 +330,13 @@
     position: absolute;
     left: 7.5mm;
     right: 7.5mm;
-    top: 47mm;
+    top: 52mm;
     height: .55mm;
-    background: #17365d;
+    background: #10234F;
   }
   .signature-row {
     position: absolute;
-    top: 48mm;
+    top: 58mm;
     left: 22.8mm;
     width: 164.4mm;
     display: grid;
@@ -349,7 +356,7 @@
   .sign-line { margin-top: 6.1mm; letter-spacing: .7mm; font-size: 3.2mm; }
   .contact {
     position: absolute;
-    top: 70mm;
+    top: 75mm;
     left: 8mm;
     right: 8mm;
     text-align: center;
@@ -357,7 +364,7 @@
     line-height: 1.24;
     font-weight: 800;
   }
-  .contact .email { color: #17365d; }
+  .contact .email { color: #10234F; }
   .contact .address { font-size: 4.05mm; }
   .bottom-stripe {
     position: absolute;
@@ -365,7 +372,7 @@
     right: 6mm;
     bottom: 1.2mm;
     height: 3.8mm;
-    background: linear-gradient(90deg,#17365d 0 50%,#c8a65a 50% 100%);
+    background: linear-gradient(90deg,#111 0 50%,#10234F 50% 100%);
   }
 
   @media screen { .sheet { box-shadow: 0 4px 22px #0002; } }
@@ -373,27 +380,305 @@
     html, body { width: 210mm; height: 297mm; margin: 0; padding: 0; background: #fff; }
     .sheet { margin: 0; box-shadow: none; page-break-after: avoid; break-after: avoid; }
   }
+
+  /* Arabic typography refinement */
+  :root {
+    --arabic-display: "Noto Kufi Arabic", "Tahoma", "Arial", sans-serif;
+    --arabic-reading: "Noto Naskh Arabic", "Tahoma", "Arial", sans-serif;
+  }
+  .brand-ar,
+  .title-ar,
+  .var,
+  .est-ar,
+  .meta-box [dir="rtl"] {
+    font-family: var(--arabic-display);
+    font-weight: 800;
+    letter-spacing: 0;
+    text-rendering: optimizeLegibility;
+    font-kerning: normal;
+  }
+  .brand-ar {
+    font-size: 6.8mm;
+    line-height: 1.35;
+    top: 30.4mm;
+  }
+  .title-ar {
+    font-size: 6.9mm;
+    line-height: 1.45;
+    transform: translateY(-.3mm);
+  }
+  .intro-ar,
+  .statement-ar,
+  .note-ar {
+    font-family: var(--arabic-reading);
+    font-weight: 700;
+    text-rendering: optimizeLegibility;
+    font-kerning: normal;
+  }
+  .intro-ar {
+    font-size: 4.9mm;
+    line-height: 1.55;
+    margin-top: 1.2mm;
+  }
+  .var {
+    font-size: 3.55mm;
+    line-height: 1.5;
+    justify-content: center;
+    padding: 0 1.4mm;
+  }
+  .est-ar {
+    font-size: 5.15mm;
+    line-height: 1.5;
+  }
+  .statement-ar {
+    font-size: 4.05mm;
+    line-height: 1.65;
+    font-weight: 800;
+  }
+  .statement-ar > div {
+    white-space: normal;
+    line-height: 1.6;
+  }
+  .note-ar {
+    font-size: 3.9mm;
+    line-height: 1.65;
+    font-weight: 700;
+  }
+  .sign-box {
+    font-family: var(--arabic-display);
+    line-height: 1.5;
+  }
+  /* Stronger, cleaner section headers */
+  .titlebar {
+    background: linear-gradient(180deg, #f1f1f1 0%, #e6e6e6 100%);
+    border: .25mm solid #dedede;
+  }
+  .title-en {
+    letter-spacing: .15mm;
+  }
+  .meta-label,
+  .vlabel,
+  .est-en,
+  .note-title {
+    letter-spacing: .05mm;
+  }
+  @media print {
+    /* Fonts are loaded from Google Fonts when online; local fallbacks remain available. */
+    .brand-ar, .title-ar, .var, .est-ar, .intro-ar,
+    .statement-ar, .note-ar, .sign-box {
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+  }
+
+
+  /* Final A4 spacing adjustment */
+  .titlebar { top: 52.6mm; }
+  .meta { top: 71.3mm; }
+  .intro { top: 83.5mm; }
+  .vehicle { top: 105.2mm; }
+  .estimated { top: 144.0mm; }
+  .statement { top: 162.2mm; }
+
+  /* Notes and footer content are repositioned to prevent overlap and clipping. */
+  .note-en { top: 3mm; line-height: 1.2; }
+  .note-ar { top: 5mm; line-height: 1.65; }
+  .footer-rule { top: 24mm; }
+  .signature-row { top: 30mm; }
+  .contact { top: 68mm; }
+
+
+  /* Align English and Arabic note sections on one shared top baseline. */
+  .note-en,
+  .note-ar {
+    top: 3mm;
+    width: 86mm;
+    height: 19mm;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start;
+  }
+  .note-en {
+    left: 12.5mm;
+    text-align: left;
+  }
+  .note-ar {
+    right: 12.5mm;
+    left: auto;
+    text-align: right;
+    direction: rtl;
+  }
+  .note-en .note-title,
+  .note-ar .note-title {
+    margin: 0 0 1mm;
+    line-height: 1.15;
+  }
+  .note-en p,
+  .note-ar p {
+    margin: 0;
+    font-size: 3.45mm;
+    line-height: 1.25;
+    font-weight: 700;
+  }
+  .note-ar p {
+    font-family: var(--arabic-reading);
+    font-size: 3.9mm;
+    line-height: 1.5;
+  }
+
+
+  /* Four-row vehicle table, including comments beneath Chassis No. */
+  .vehicle { height: 42mm; }
+  .comments-row .vvalue {
+    white-space: normal;
+    line-height: 1.15;
+    overflow-wrap: anywhere;
+  }
+
+  /* Reposition valuation blocks to account for the added comments row
+     while keeping the footer clear on the A4 page. */
+  .estimated { top: 153.2mm; }
+  .statement {
+    top: 171.3mm;
+    height: 32.5mm;
+  }
+  .statement-ar {
+    top: 1mm;
+    height: 11.5mm;
+  }
+  .statement-line { top: 14mm; }
+  .statement-en {
+    top: 15.5mm;
+    height: 15.5mm;
+  }
+
+
+  /* Vehicle fields: allow complete values and comments to wrap without clipping. */
+  .vehicle {
+    height: auto;
+    overflow: hidden;
+  }
+  .vrow {
+    height: auto;
+    min-height: 9.2mm;
+    align-items: stretch;
+  }
+  .vlabel,
+  .var {
+    min-width: 0;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    line-height: 1.2;
+    padding-top: 1.2mm;
+    padding-bottom: 1.2mm;
+  }
+  .vlabel {
+    font-size: 4.5mm;
+  }
+  .var {
+    font-size: 3.2mm;
+    justify-content: center;
+    text-align: center;
+  }
+  .vvalue {
+    min-width: 0;
+    height: auto;
+    min-height: 9.2mm;
+    display: flex;
+    align-items: center;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    word-break: normal;
+    line-height: 1.22;
+    padding: 1.2mm 3mm;
+    font-size: 4.4mm;
+  }
+  .comments-row {
+    min-height: 14mm;
+  }
+  .comments-row .vvalue {
+    align-items: center;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    line-height: 1.2;
+    font-size: 4mm;
+  }
+
+  /* Keep the valuation and statement clear of the expanded four-row table. */
+  .estimated { top: 152mm; }
+  .statement { top: 169mm; height: 34mm; }
+  .statement-ar { top: 1mm; height: 14mm; }
+  .statement-line { top: 17mm; }
+  .statement-en { top: 18.5mm; height: 14mm; }
+
+
+  /* Marshal Auctions identity: deep navy, gold and warm ivory. */
+  .brand-logo {
+    top: 7mm;
+    width: 25mm;
+    height: 25mm;
+  }
+  .brand-logo img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+  }
+  .brand-ar .accent,
+  .brand-en .accent,
+  .note-title,
+  .contact .email {
+    color: #B88916;
+  }
+  .title-divider,
+  .statement-line,
+  .footer-rule {
+    background: #D6A62E;
+  }
+  .titlebar {
+    background: linear-gradient(180deg, #F8F4E8 0%, #EEE6D2 100%);
+    border: .25mm solid #D6A62E;
+  }
+  .meta-box,
+  .vehicle,
+  .estimated {
+    border-color: #10234F;
+  }
+  .vrow + .vrow,
+  .vlabel,
+  .var {
+    border-color: #10234F;
+  }
+  .vlabel, .var {
+    background: #F7F3E8;
+  }
+  .amount {
+    background: #10234F;
+    border: .45mm solid #D6A62E;
+  }
+  .statement {
+    background: #FBF8EF;
+  }
+  .bottom-stripe {
+    background: linear-gradient(90deg, #10234F 0 72%, #D6A62E 72% 100%);
+  }
 </style>
 </head>
 <body>
-<main class="sheet" aria-label="Marshall Auctions vehicle valuation quotation">
+<main class="sheet" aria-label="Marshal Auctions vehicle valuation quotation">
   <header class="brand-header">
-    <svg class="brand-logo" viewBox="0 0 500 200" role="img" aria-label="Marshall Auctions M and gavel emblem">
-      <circle cx="250" cy="96" r="82" fill="#17365d" stroke="#c8a65a" stroke-width="9"/>
-      <circle cx="250" cy="96" r="68" fill="none" stroke="#ffffff" stroke-opacity=".28" stroke-width="2"/>
-      <path d="M179 63 L220 22 L264 66 L223 107 Z" fill="#c8a65a" stroke="#f5e4b8" stroke-width="5" stroke-linejoin="round"/>
-      <path d="M235 92 L321 154" stroke="#c8a65a" stroke-width="17" stroke-linecap="round"/>
-      <path d="M298 143 L341 166" stroke="#f5e4b8" stroke-width="11" stroke-linecap="round"/>
-      <text x="250" y="130" text-anchor="middle" fill="#ffffff" font-family="Georgia,serif" font-size="86" font-weight="700">M</text>
-    </svg>
-    <div class="brand-ar"><span class="accent">مارشال</span> للمزادات</div>
-    <div class="brand-en"><span class="accent">MARSHALL</span> AUCTIONS</div>
+    <div class="brand-logo">
+<img class="logo-upload" src="{{logo_url}}" alt="">
+    </div>
+    <div class="brand-ar"><span class="accent">{{company_legal_name_ar_head}}</span> {{company_legal_name_ar_tail}}</div>
+    <div class="brand-en"><span class="accent">{{company_legal_name_en_head}}</span> {{company_legal_name_en_tail}}</div>
   </header>
 
   <section class="titlebar" aria-label="Quotation title">
     <div class="title-en">QUOTATION</div>
     <div class="title-divider"></div>
-    <div class="title-ar">عرض سعر / تقييم</div>
+    <div class="title-ar">تقييم</div>
   </section>
 
   <section class="meta" aria-label="Quotation reference and date">
@@ -428,6 +713,11 @@
       <div class="vvalue">{{chassis}}</div>
       <div class="var">رقم الشاسيه:</div>
     </div>
+    <div class="vrow comments-row">
+      <div class="vlabel">Comments:</div>
+      <div class="vvalue">{{comments}}</div>
+      <div class="var">ملاحظات:</div>
+    </div>
   </section>
 
   <section class="estimated" aria-label="Estimated vehicle value">
@@ -450,18 +740,14 @@
   </section>
 
   <footer class="footer">
-    <svg class="watermark" viewBox="0 0 500 180" aria-hidden="true">
-      <circle cx="250" cy="88" r="76" fill="none" stroke="#c8a65a" stroke-width="8"/>
-      <path d="M178 53 L219 12 L264 57 L223 98 Z" fill="none" stroke="#c8a65a" stroke-width="12" stroke-linejoin="round"/>
-      <path d="M235 84 L322 146" stroke="#c8a65a" stroke-width="16" stroke-linecap="round"/>
-      <text x="250" y="124" text-anchor="middle" fill="#17365d" font-family="Georgia,serif" font-size="76" font-weight="700">M</text>
-    </svg>
-
-    <div class="note-en">
+<div class="note-en">
       <div class="note-title">Note:</div>
       <p>• This is an approximate valuation and may vary depending on the vehicle's actual condition and market changes.</p>
     </div>
-    <div class="note-ar">ملاحظة: هذا تقييم تقريبي وقد يختلف حسب الحالة الفعلية للسيارة وتغيرات السوق.</div>
+    <div class="note-ar">
+      <div class="note-title">ملاحظة:</div>
+      <p>هذا تقييم تقريبي وقد يختلف حسب الحالة الفعلية للسيارة وتغيرات السوق.</p>
+    </div>
     <div class="footer-rule"></div>
 
     <div class="signature-row">
@@ -473,7 +759,7 @@
     </div>
 
     <div class="contact">
-      <div>Mob.: {{company_phone}}</div>
+      <div>Mobile: {{company_phone}}</div>
       <div class="email">E-mail: {{company_email}}</div>
       <div class="address">{{company_address}}</div>
     </div>
@@ -484,3 +770,4 @@
 
 </body>
 </html>
+

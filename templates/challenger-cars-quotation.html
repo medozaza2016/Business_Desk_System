@@ -543,6 +543,91 @@
     line-height: 1.5;
   }
 
+
+  /* Four-row vehicle table, including comments beneath Chassis No. */
+  .vehicle { height: 42mm; }
+  .comments-row .vvalue {
+    white-space: normal;
+    line-height: 1.15;
+    overflow-wrap: anywhere;
+  }
+
+  /* Reposition valuation blocks to account for the added comments row
+     while keeping the footer clear on the A4 page. */
+  .estimated { top: 153.2mm; }
+  .statement {
+    top: 171.3mm;
+    height: 32.5mm;
+  }
+  .statement-ar {
+    top: 1mm;
+    height: 11.5mm;
+  }
+  .statement-line { top: 14mm; }
+  .statement-en {
+    top: 15.5mm;
+    height: 15.5mm;
+  }
+
+
+  /* Vehicle fields: allow complete values and comments to wrap without clipping. */
+  .vehicle {
+    height: auto;
+    overflow: hidden;
+  }
+  .vrow {
+    height: auto;
+    min-height: 9.2mm;
+    align-items: stretch;
+  }
+  .vlabel,
+  .var {
+    min-width: 0;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    line-height: 1.2;
+    padding-top: 1.2mm;
+    padding-bottom: 1.2mm;
+  }
+  .vlabel {
+    font-size: 4.5mm;
+  }
+  .var {
+    font-size: 3.2mm;
+    justify-content: center;
+    text-align: center;
+  }
+  .vvalue {
+    min-width: 0;
+    height: auto;
+    min-height: 9.2mm;
+    display: flex;
+    align-items: center;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    word-break: normal;
+    line-height: 1.22;
+    padding: 1.2mm 3mm;
+    font-size: 4.4mm;
+  }
+  .comments-row {
+    min-height: 14mm;
+  }
+  .comments-row .vvalue {
+    align-items: center;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    line-height: 1.2;
+    font-size: 4mm;
+  }
+
+  /* Keep the valuation and statement clear of the expanded four-row table. */
+  .estimated { top: 152mm; }
+  .statement { top: 169mm; height: 34mm; }
+  .statement-ar { top: 1mm; height: 14mm; }
+  .statement-line { top: 17mm; }
+  .statement-en { top: 18.5mm; height: 14mm; }
+
 </style>
 </head>
 <body>
@@ -558,7 +643,7 @@
   <section class="titlebar" aria-label="Quotation title">
     <div class="title-en">QUOTATION</div>
     <div class="title-divider"></div>
-    <div class="title-ar">عرض سعر / تقييم</div>
+    <div class="title-ar">تقييم</div>
   </section>
 
   <section class="meta" aria-label="Quotation reference and date">
@@ -592,6 +677,11 @@
       <div class="vlabel">Chassis No.:</div>
       <div class="vvalue">{{chassis}}</div>
       <div class="var">رقم الشاسيه:</div>
+    </div>
+    <div class="vrow comments-row">
+      <div class="vlabel">Comments:</div>
+      <div class="vvalue">{{comments}}</div>
+      <div class="var">ملاحظات:</div>
     </div>
   </section>
 
