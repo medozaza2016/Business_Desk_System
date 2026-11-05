@@ -86,3 +86,13 @@ letterhead artwork that already carries the company identity is deployed, delete
 class="brandline">…</div>` block in Settings → *Print template* and publish a new version — otherwise the
 identity appears twice.
 
+## Known limitations of the default sheet
+
+- **Amount in words is English only.** The Arabic sentence carries the figure (`{{amount}}`) and the Arabic
+  unit "درهم إماراتي", so the default sheet assumes an AED company. A company trading in another currency
+  should edit that sentence in its own template version.
+- The sheet is a **single page by design** (`overflow:hidden`, fixed 297 mm). Long model or chassis values
+  wrap inside `.vvalue`, but extreme values can clip.
+- Numbers use Western Arabic digits in both languages, matching the reference sheet.
+
+
