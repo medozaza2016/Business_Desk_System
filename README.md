@@ -1,22 +1,79 @@
 # Challenger Quotation Platform
 
-A Cloudflare-native multi-company quotation application.
+Multi-company quotation desk for Challenger Cars: issue bilingual (English/Arabic) A4 valuation
+quotations, keep an immutable record of every sheet, and print or save to PDF from the browser.
+
+Live: <https://quote.ahmedmohamed.org>
 
 ## Stack
-- Cloudflare Workers for the API and static application
-- D1 for users, companies, templates, sequences, and quotation history
-- R2 for company logos, letterheads, and font assets
-- HTML quotation rendering with browser-based printing
 
-## Initial deployment
-1. Install Node.js 20 or newer.
-2. Run `npm install`.
-3. Configure the D1 database binding and R2 bucket binding in `wrangler.toml`.
-4. Set `ADMIN_EMAIL` and `ADMIN_PASSWORD_HASH` as Worker secrets. Password hash format and bootstrap procedure will be documented with the authentication implementation.
-5. Run `npm run db:migrate:remote`.
-6. Run `npm run deploy`.
+- **Cloudflare Workers** — API, print rendering, all routing
+- **Workers Assets** (`./public`) — the desk UI, no framework, no build step
+- **D1** — `companies`, `templates`, `quote_sequences`, `quotations`, `settings`, `audit_events`
+- **R2** — reserved for per-company logos and letterheads
+- Authentication: one shared passcode, PBKDF2-SHA256 (100,000 iterations), stateless HMAC session cookie
 
-Do not expose D1 or R2 credentials in client-side code. Every company-owned query must be scoped server-side to the authenticated company.
+## Features
 
-## Current stage
-Initial application foundation. Authentication, company administration, quotation workflows, template editing, and production hardening are being implemented incrementally.
+- Vehicle valuation entry with automatic numbering (`QA-2026-00001`, per company and per year) and a
+  read-only number preview that never burns a serial.
+- Company switcher in the header; every quotation is scoped to its company.
+- Bilingual A4 print sheet positioned in millimetres over a letterhead background, printed by the
+  browser (Save as PDF) — no PDF service, no stored binaries.
+- Versioned HTML templates per company; the issued sheet is a snapshot, so later edits never rewrite
+  history.
+- Live A4 preview inside the quotation record page, editable details, soft cancel, per-company CSV
+  export, and an audit trail of every mutation.
+
+## Quick start
+
+```bash
+npm install
+npm run db:migrate:local     # apply migrations to the local D1 copy
+npm run dev                  # http://127.0.0.1:8787
+```
+
+The first visit asks for a shared passcode; that creates company **Challenger Cars** and the default
+template. Fill in the real company details under *Settings*.
+
+## Deploy
+
+```bash
+npm run db:migrate:remote
+npm run deploy
+```
+
+The Worker name, D1 id, R2 bucket and asset directory live in `wrangler.toml`; `SESSION_HOURS` is a plain
+variable there. No Worker secrets are required.
+
+## Documentation
+
+| Document | Contents |
+|---|---|
+| [`docs/api.md`](docs/api.md) | Full HTTP API, auth model, status codes, curl examples |
+| [`docs/template-placeholders.md`](docs/template-placeholders.md) | Print template tokens, CSP rules, letterhead geometry |
+| [`docs/operations.md`](docs/operations.md) | First run, passcode rotation and recovery, audit queries, troubleshooting |
+| [`docs/PRD-multi-company-quotation-platform.md`](docs/PRD-multi-company-quotation-platform.md) | Product requirements |
+
+`docs/index.html`, `docs/detail.html` and `docs/quotation.html` are the original Jinja reference screens,
+kept for visual comparison. They are not served by the Worker.
+
+## Project layout
+
+```
+src/index.js                      Worker: auth, API, print rendering
+src/types.d.ts                    *.html text-module declaration
+templates/default-quotation.html  Bilingual A4 sheet (seeded as template v1)
+public/index.html                 Desk: passcode gate, workspace, settings
+public/quote.html                 Quotation record + live A4 preview
+public/app.css                    Design system ("precision paperwork")
+public/app.js, public/quote.js    Client logic
+migrations/                       D1 schema, forward-only
+docs/                             API, templates, operations, PRD
+```
+
+## Notes
+
+- `public/letterhead_background.png` is a white placeholder until the real artwork is supplied.
+- Amount in words is generated in English; the Arabic sentence on the sheet carries the figure.
+- Do not expose D1 or R2 credentials to the client; every query is scoped server-side.

@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Challenger Cars | Quotation Manager</title>
+<style>
+:root{--red:#c51e25;--ink:#191919;--muted:#697078;--line:#e3e5e8}
+*{box-sizing:border-box}body{margin:0;background:#f2f3f5;color:var(--ink);font-family:Arial,Helvetica,sans-serif}
+.wrap{max-width:1220px;margin:28px auto;padding:0 20px}.top{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px}
+.brand{font-weight:900;font-size:22px;letter-spacing:.2px}.brand span{color:var(--red)}.sub{color:var(--muted);font-size:13px;margin-top:5px}
+.grid{display:grid;grid-template-columns:360px 1fr;gap:18px;align-items:start}
+.card{background:#fff;border:1px solid var(--line);border-radius:12px;padding:21px;box-shadow:0 3px 14px #10182808}
+h2{font-size:16px;margin:0 0 15px}.hint{color:#747b83;font-size:12px;line-height:1.45;margin:-7px 0 12px}
+label{display:block;font-size:12px;font-weight:700;margin:12px 0 0;color:#30343a}
+input{width:100%;height:40px;border:1px solid #cfd3d8;border-radius:7px;padding:0 10px;margin-top:5px;font:14px Arial;background:#fff}
+input:focus{outline:2px solid #c51e2522;border-color:var(--red)}
+.prefix{display:flex;border:1px solid #cfd3d8;border-radius:7px;overflow:hidden;margin-top:5px;height:40px}
+.prefix b{display:flex;align-items:center;padding:0 12px;background:#f4f4f4;color:var(--red);border-right:1px solid #ddd}
+.prefix input{border:0;margin:0;border-radius:0;height:auto;min-width:0}
+button,.btn{display:inline-flex;align-items:center;justify-content:center;min-height:38px;padding:0 14px;border:0;border-radius:7px;background:var(--red);color:white;font-weight:700;font-size:13px;text-decoration:none;cursor:pointer}
+.secondary{background:#555}.danger{background:#9f1b20}.actions{display:flex;gap:8px;margin-top:17px;flex-wrap:wrap}
+.search{display:flex;gap:8px;margin-bottom:13px}.search input{margin:0;flex:1;min-width:0}
+.table-wrap{overflow:auto}table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;padding:11px 9px;border-bottom:1px solid #eceef0;white-space:nowrap}
+th{font-size:10px;color:#777;text-transform:uppercase;letter-spacing:.05em}
+a.link{color:var(--red);font-weight:700;text-decoration:none}.empty{padding:30px;text-align:center;color:#777}
+.notice{padding:10px 13px;background:#eef8ef;color:#216b2a;border-radius:7px;font-size:13px;margin-bottom:14px}
+.count{color:#777;font-size:12px;margin-bottom:8px}.small{font-size:11px;color:#7b8188}
+@media(max-width:900px){.grid{grid-template-columns:1fr}.top{align-items:flex-start;gap:10px;flex-direction:column}}
+</style></head>
+<body><div class="wrap">
+<div class="top">
+  <div><div class="brand"><span>CHALLENGER</span> CARS</div><div class="sub">Quotation Manager · HTML preview · Browser printing · Local SQLite</div></div>
+  <div class="sub">Runs locally on this computer</div>
+</div>
+{% if message %}<div class="notice">{{ message }}</div>{% endif %}
+<div class="grid">
+<section class="card">
+  <h2>Create a quotation</h2>
+  <p class="hint">Enter the vehicle and valuation details. The quotation will be saved before you preview or print it.</p>
+  <form method="post" action="/quotes">
+    <label>Quotation number
+      <span class="prefix"><b>QA-</b><input name="quote_number" required pattern="[0-9]+(-[0-9]+)*" inputmode="text" placeholder="e.g. 1026-0148"></span>
+    </label>
+    <label>Date<input type="date" name="quote_date" required value="{{ today }}"></label>
+    <label>Vehicle model<input name="model" required maxlength="120" placeholder="e.g. AUDI A8"></label>
+    <label>Year<input name="year" required maxlength="12" placeholder="e.g. 2012"></label>
+    <label>Chassis number<input name="chassis" required maxlength="120" placeholder="Enter chassis number"></label>
+    <label>Estimated value (AED)<input name="estimated_value" required type="number" min="0.01" max="999999999.99" step="0.01" placeholder="e.g. 15000"></label>
+    <div class="actions"><button type="submit">Save quotation</button></div>
+  </form>
+</section>
+<section class="card">
+  <h2>Saved quotations</h2>
+  <form class="search" method="get" action="/">
+    <input name="q" value="{{ search }}" placeholder="Search quote no., model, year or chassis">
+    <button type="submit">Search</button>
+    {% if search %}<a class="btn secondary" href="/">Clear</a>{% endif %}
+  </form>
+  <div class="count">{{ total }} saved quotation(s)</div>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Quotation</th><th>Date</th><th>Vehicle</th><th>Value (AED)</th><th>Actions</th></tr></thead>
+    <tbody>
+    {% for quote in quotes %}
+      <tr>
+        <td><a class="link" href="/quotes/{{ quote.id }}">{{ quote.quote_number }}</a></td>
+        <td>{{ quote.quote_date.strftime("%d/%m/%Y") }}</td>
+        <td>{{ quote.model }} {{ quote.year }}</td>
+        <td>{{ "{:,.2f}".format(quote.estimated_value) }}</td>
+        <td><a class="link" href="/quotes/{{ quote.id }}">Open</a> · <a class="link" href="/quotes/{{ quote.id }}/print">Print</a></td>
+      </tr>
+    {% else %}
+      <tr><td colspan="5" class="empty">No saved quotations yet. Create your first quotation using the form.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  <p class="small">Records are stored in the local <code>data/quotes.db</code> SQLite database.</p>
+</section>
+</div></div></body></html>

@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{{ quote.quote_number }} | Challenger Cars Quotation</title>
+<style>
+@page { size:A4 portrait; margin:0; }
+* { box-sizing:border-box; }
+html,body { margin:0; padding:0; width:210mm; min-height:297mm; }
+body { background:#e8eaed; color:#111; font-family:Arial,"DejaVu Sans",sans-serif; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+.toolbar {
+  width:210mm; margin:0 auto 10px; padding:10px 12px; display:flex; justify-content:space-between;
+  align-items:center; gap:12px; background:#fff; border:1px solid #dfe2e6; border-radius:8px;
+  font:13px Arial,sans-serif; color:#333;
+}
+.toolbar-actions { display:flex; gap:8px; align-items:center; }
+.toolbar a,.toolbar button { display:inline-flex; align-items:center; justify-content:center; min-height:34px;
+  border:0; border-radius:6px; padding:0 13px; background:#c51e25; color:#fff; font-weight:700;
+  font-size:12px; text-decoration:none; cursor:pointer; }
+.toolbar a.secondary { background:#555; }
+.sheet {
+ position:relative; width:210mm; height:297mm; overflow:hidden; margin:0 auto;
+ background:#fff url("/static/letterhead_background.png") center/100% 100% no-repeat;
+}
+.body-area { position:absolute; left:0; top:0; width:210mm; height:297mm; }
+.titlebar {
+ position:absolute; left:22.315mm; top:54.592mm; width:159.791mm; height:14.345mm;
+ border-radius:8.368mm; background:#e9e9e9; display:grid;
+ grid-template-columns:1fr 1.594mm 1fr; align-items:center; text-align:center; padding:0 6.973mm;
+}
+.title-en { font-size:8.368mm; font-weight:900; }
+.title-divider { width:1.594mm; height:10.759mm; background:#c51e25; justify-self:center; }
+.title-ar { direction:rtl; font-size:7.770mm; font-weight:900; }
+.meta { position:absolute; top:73.321mm; left:11.954mm; width:180.114mm;
+ display:grid; grid-template-columns:85.275mm 73.719mm; gap:21.120mm; }
+.meta-box { height:9.962mm; border:.398mm solid #c51e25; border-radius:2.989mm; background:#fff;
+ display:flex; align-items:center; padding:0 5.180mm; white-space:nowrap; }
+.meta-label { font-size:4.981mm; font-weight:800; }
+.meta-value { font-size:5.15mm; font-weight:900; color:#c51e25; margin-left:2.2mm; }
+.meta-date { color:#111; text-align:center; flex:1; }
+.meta-box:first-child { padding-left:3.5mm; padding-right:3.5mm; }
+.meta-box:first-child .meta-label { font-size:4.55mm; }
+.meta-box:first-child .meta-value { font-size:4.55mm; margin-left:1.4mm; }
+.intro { position:absolute; top:85.474mm; left:19.924mm; width:170.152mm; text-align:center; }
+.intro-en { font-size:4.782mm; line-height:1.23; font-weight:650; }
+.intro-ar { margin-top:1.594mm; direction:rtl; font-size:4.981mm; line-height:1.25; font-weight:800; }
+.vehicle { position:absolute; left:11.755mm; top:107.192mm; width:180.712mm; height:32.300mm;
+ border:.398mm solid #c51e25; border-radius:3.387mm; overflow:hidden; background:#fff; }
+.vrow { display:grid; grid-template-columns:42.239mm 1fr 42.837mm; height:10.2mm; }
+.vrow + .vrow { border-top:.398mm solid #c51e25; }
+.vlabel { background:#f3f0e9; display:flex; align-items:center; padding:0 2.8mm; font-size:5.0mm;
+ font-weight:800; white-space:nowrap; border-right:.398mm solid #c51e25; }
+.vvalue { display:flex; align-items:center; padding:0 5.579mm; font-size:5.3mm; font-weight:800;
+ background:#fff; overflow-wrap:anywhere; min-width:0; }
+.var { background:#f3f0e9; border-left:.398mm solid #c51e25; direction:rtl; display:flex;
+ align-items:center; justify-content:flex-start; padding:0 1.8mm; font-size:3.65mm; font-weight:800; white-space:nowrap; }
+.estimated { position:absolute; left:11.556mm; top:146.044mm; width:181.110mm; height:13.548mm;
+ border:.398mm solid #c51e25; border-radius:3.786mm; display:grid;
+ grid-template-columns:1fr 65.750mm 1fr; align-items:center; padding:0 5.778mm; background:#fff; }
+.est-en { font-size:5.579mm; font-weight:900; white-space:nowrap; }
+.est-ar { text-align:right; direction:rtl; font-size:5.579mm; font-weight:900; white-space:nowrap; }
+.amount { height:12.751mm; border-radius:5.579mm; background:#c51e25; color:#fff; display:flex;
+ align-items:center; justify-content:center; font-size:7.15mm; font-weight:900; letter-spacing:.1mm; white-space:nowrap; }
+.statement { position:absolute; left:8.567mm; top:164.175mm; width:186.888mm; height:38.852mm;
+ border-radius:7.571mm; background:#f5f4f0; padding:2.391mm 8.966mm; }
+.statement-ar { position:absolute; left:9.564mm; right:9.564mm; top:1.992mm; height:15.740mm;
+ display:flex; flex-direction:column; justify-content:center; align-items:center; text-align:center;
+ direction:rtl; font-size:3.8mm; line-height:1.25; font-weight:900; }
+.statement-ar > div { width:100%; text-align:center; white-space:nowrap; }
+.statement-line { position:absolute; left:8.966mm; right:8.966mm; top:20.123mm; height:.598mm; background:#c51e25; }
+.statement-en { position:absolute; left:7.571mm; right:7.571mm; top:22.0mm; height:15.0mm;
+ display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center;
+ font-size:3.15mm; line-height:1.15; font-weight:800; }
+@media screen {
+ body { padding:12px 0 20px; }
+ .sheet { box-shadow:0 4px 22px #0002; }
+}
+@media print {
+ html,body { width:210mm; height:297mm; margin:0; padding:0; background:#fff; }
+ .toolbar { display:none !important; }
+ .sheet { margin:0; box-shadow:none; page-break-after:avoid; break-after:avoid; }
+}
+</style>
+</head>
+<body>
+<div class="toolbar">
+  <div><strong>{{ quote.quote_number }}</strong> · HTML quotation preview</div>
+  <div class="toolbar-actions">
+    <a class="secondary" href="/quotes/{{ quote.id }}">Back to record</a>
+    <button type="button" onclick="window.print()">Print / Save as PDF</button>
+  </div>
+</div>
+<main class="sheet">
+<section class="body-area">
+ <div class="titlebar">
+  <div class="title-en">QUOTATION</div><div class="title-divider"></div><div class="title-ar">عرض سعر / تقييم</div>
+ </div>
+ <div class="meta">
+  <div class="meta-box"><span class="meta-label">Quotation No.:</span><span class="meta-value">{{ quote.quote_number }}</span></div>
+  <div class="meta-box"><span class="meta-label">Date:</span><span class="meta-value meta-date">{{ date_text }}</span></div>
+ </div>
+ <div class="intro">
+  <div class="intro-en">This is a preliminary valuation for the below mentioned vehicle<br>based on the current market value.</div>
+  <div class="intro-ar">وهو تقييم مبدئي للسيارة المذكورة أدناه بناءً على القيمة الحالية في السوق.</div>
+ </div>
+ <div class="vehicle">
+  <div class="vrow"><div class="vlabel">Model:</div><div class="vvalue">{{ quote.model }}</div><div class="var">الموديل:</div></div>
+  <div class="vrow"><div class="vlabel">Year:</div><div class="vvalue">{{ quote.year }}</div><div class="var">سنة الصنع:</div></div>
+  <div class="vrow"><div class="vlabel">Chassis No.:</div><div class="vvalue">{{ quote.chassis }}</div><div class="var">رقم الشاسيه:</div></div>
+ </div>
+ <div class="estimated">
+  <div class="est-en">Estimated Value:</div>
+  <div class="amount">AED {{ money }}</div>
+  <div class="est-ar">القيمة التقديرية:</div>
+ </div>
+ <div class="statement">
+  <div class="statement-ar">
+   <div>تُقدّر القيمة السوقية للسيارة، في حال كانت بحالة جيدة،</div>
+   <div>بتاريخ {{ date_text }} بمبلغ وقدره {{ money }} درهم إماراتي فقط.</div>
+  </div>
+  <div class="statement-line"></div>
+  <div class="statement-en">
+   <div>The estimated market value of the vehicle,</div>
+   <div>assuming it is in good condition, as of {{ date_text }},</div>
+   <div>is AED {{ money }} ({{ words }}).</div>
+  </div>
+ </div>
+</section>
+</main>
+{% if autoprint %}
+<script>
+window.addEventListener("load", function () {
+  setTimeout(function () { window.print(); }, 450);
+});
+</script>
+{% endif %}
+</body></html>

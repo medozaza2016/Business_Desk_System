@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{{ quote.quote_number }} | Challenger Cars</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#f2f3f5;font-family:Arial,Helvetica,sans-serif;color:#191919}
+.wrap{max-width:1040px;margin:26px auto;padding:0 18px}.head{display:flex;justify-content:space-between;align-items:center;margin-bottom:17px;gap:12px}
+.brand{font-size:21px;font-weight:900}.brand span{color:#c51e25}.sub{font-size:12px;color:#747b83;margin-top:4px}
+.card{background:#fff;border:1px solid #e2e4e7;border-radius:12px;padding:21px;margin-bottom:16px}
+h2{font-size:16px;margin:0 0 14px}.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+label{font-size:12px;font-weight:700;color:#333}input{display:block;width:100%;height:39px;margin-top:5px;padding:0 10px;border:1px solid #ccd0d5;border-radius:7px;font:14px Arial}
+.actions{display:flex;gap:9px;flex-wrap:wrap;margin-top:17px}
+button,.btn{min-height:39px;padding:0 15px;border:0;border-radius:7px;background:#c51e25;color:white;font-weight:700;text-decoration:none;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;font-size:13px}
+.secondary{background:#555}.danger{background:#9f1b20}.notice{padding:10px 13px;background:#eef8ef;color:#216b2a;border-radius:7px;font-size:13px;margin-bottom:14px}
+.summary{color:#626970;font-size:13px;line-height:1.5;margin:0}
+@media(max-width:700px){.grid{grid-template-columns:1fr 1fr}.head{align-items:flex-start;flex-direction:column}}
+</style></head><body><div class="wrap">
+<div class="head"><div><div class="brand"><span>CHALLENGER</span> CARS</div><div class="sub">Quotation record · {{ quote.quote_number }}</div></div><a class="btn secondary" href="/">← Back to quotations</a></div>
+{% if message %}<div class="notice">{{ message }}</div>{% endif %}
+<section class="card">
+  <h2>Edit quotation details</h2>
+  <form method="post" action="/quotes/{{ quote.id }}/update">
+    <div class="grid">
+      <label>Quotation number<input value="{{ quote.quote_number }}" disabled></label>
+      <label>Date<input type="date" name="quote_date" value="{{ quote.quote_date.isoformat() }}" required></label>
+      <label>Vehicle model<input name="model" value="{{ quote.model }}" maxlength="120" required></label>
+      <label>Year<input name="year" value="{{ quote.year }}" maxlength="12" required></label>
+      <label>Chassis number<input name="chassis" value="{{ quote.chassis }}" maxlength="120" required></label>
+      <label>Estimated value (AED)<input name="estimated_value" type="number" min="0.01" max="999999999.99" step="0.01" value="{{ quote.estimated_value }}" required></label>
+    </div>
+    <div class="actions"><button type="submit">Save changes</button><a class="btn" href="/quotes/{{ quote.id }}/print" target="_blank" rel="noopener">Preview / Print quotation</a></div>
+  </form>
+</section>
+<section class="card">
+  <h2>Quotation preview details</h2>
+  <p class="summary">The print view uses the original Challenger quotation format. It fills the HTML template with this saved record, then opens the browser's native print dialog. Choose your printer or select <b>Save as PDF</b>. No PDF is generated or stored by the server.</p>
+  <div class="actions"><a class="btn" href="/quotes/{{ quote.id }}/print" target="_blank" rel="noopener">Open HTML preview</a><a class="btn secondary" href="/quotes/{{ quote.id }}/print?autoprint=1" target="_blank" rel="noopener">Print now</a></div>
+</section>
+<section class="card">
+  <h2>Delete record</h2>
+  <p class="summary">Deleting permanently removes this quotation from the local SQLite database.</p>
+  <form method="post" action="/quotes/{{ quote.id }}/delete" onsubmit="return confirm('Delete this quotation permanently?')"><div class="actions"><button class="danger" type="submit">Delete quotation</button></div></form>
+</section>
+</div></body></html>
