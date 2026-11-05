@@ -1,0 +1,18 @@
+name = "challenger-quotation-platform"
+main = "src/index.js"
+compatibility_date = "2026-11-05"
+workers_dev = true
+
+[[d1_databases]]
+binding = "DB"
+database_name = "challenger-quotation-db"
+database_id = "f8919c6e-a35e-4aa7-8178-dfb11e9303cf"
+migrations_dir = "migrations"
+
+[[r2_buckets]]
+binding = "ASSETS"
+bucket_name = "challenger-quotation-assets"
+
+[assets]
+directory = "./public"
+binding = "STATIC"
