@@ -268,3 +268,11 @@ The template uses the application's existing replacement fields, including `quot
 **Visual QA still required:** compare browser print output against the supplied image on A4 paper, especially Arabic font rendering, line wrapping, and printer margins. The supplied screenshot is a visual reference, not an original editable design file. The template should not be described as pixel-perfect until this print comparison is completed.
 
 **Integration status:** the template is committed to GitHub, but it has not yet been activated as a versioned template record for a company in D1. Administrator bootstrap remains unresolved, so application-level activation and print validation are pending.
+
+## 14. Marshall Auctions quotation template
+
+A second company-specific HTML template has been added at `templates/marshall-auction-quotation.html`. It follows the same A4 portrait dimensions, field positions, bilingual quotation structure, vehicle detail grid, estimated value section, valuation statement, notes, signature/stamp areas, and contact footer as the Challenger Cars template.
+
+The visual identity is distinct, using a navy-and-gold palette and an inline SVG Marshall Auctions monogram/gavel emblem. The template preserves the shared rendering placeholders so the same quotation data model can populate both company templates.
+
+This is a newly authored generic Marshall Auctions identity treatment, not an official supplied logo or verified corporate brand standard. Replace the placeholder emblem and confirm the exact legal company name, Arabic name, contact details, and approved colors before production use. Browser print QA on A4 remains required.
