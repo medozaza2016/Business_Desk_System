@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="light">
+<title>Quotation record</title>
+<link rel="stylesheet" href="/app.css">
+</head>
+<body>
+
+<header class="topbar">
+  <a class="brand" href="/"><b>CHALLENGER</b> QUOTATION DESK <small>record</small></a>
+  <span class="topbar-rule"></span>
+  <a class="btn ghost small" href="/">← Desk</a>
+  <span class="spacer"></span>
+  <span class="chip" id="statusChip">loading</span>
+  <button class="btn ghost small" id="printBtn" type="button">Print / PDF</button>
+  <button class="btn primary small" id="saveBtn" type="button">Save changes</button>
+</header>
+
+<main class="record-wrap">
+  <header class="record-head">
+    <div>
+      <p class="eyebrow">Quotation record</p>
+      <h1 class="record-number" id="recordNumber">—</h1>
+      <div class="record-meta">
+        <div>Date<b id="metaDate">—</b></div>
+        <div>Vehicle<b id="metaVehicle">—</b></div>
+        <div>Chassis<b id="metaChassis">—</b></div>
+        <div>Estimated value<b id="metaValue">—</b></div>
+      </div>
+    </div>
+    <div class="record-actions">
+      <a class="btn ghost small" id="previewTab" href="#" target="_blank" rel="noopener">Open sheet</a>
+      <button class="btn danger small" id="cancelBtn" type="button">Cancel record</button>
+    </div>
+  </header>
+
+  <div class="record-grid">
+    <section class="panel" id="formCard">
+      <div class="card-head"><h2>Editable details</h2><span class="chip" id="companyChip">—</span></div>
+      <div class="card-body">
+        <form id="recordForm" novalidate>
+          <label class="field"><span class="field-label">Quotation no.</span><input id="fNumber" maxlength="60" autocomplete="off" spellcheck="false"></label>
+          <label class="field"><span class="field-label">Date</span><input id="fDate" type="date" required></label>
+          <label class="field"><span class="field-label">Vehicle model</span><input id="fModel" maxlength="120" required></label>
+          <label class="field"><span class="field-label">Year</span><input id="fYear" maxlength="20" inputmode="numeric" required></label>
+          <label class="field"><span class="field-label">Chassis number</span><input id="fChassis" maxlength="120" required></label>
+          <label class="field"><span class="field-label">Estimated value <em id="fCurrency">AED</em></span><input id="fAmount" inputmode="decimal" required></label>
+          <label class="field"><span class="field-label">Amount in words <em>generated</em></span><input id="fWords" readonly></label>
+          <div class="card-actions">
+            <button class="btn primary" type="submit">Save changes</button>
+            <button class="btn ghost" type="button" id="reprintBtn">Refresh preview</button>
+          </div>
+        </form>
+        <p class="rail-note">The sheet is rendered from the template snapshot captured when this record was issued. Later template versions never change an existing quotation.</p>
+      </div>
+    </section>
+
+    <section class="panel preview-card">
+      <div class="card-head">
+        <h2>Print sheet · A4</h2>
+        <span class="chip" id="previewChip">210 × 297 mm</span>
+      </div>
+      <div class="preview-stage" id="previewStage">
+        <div class="preview-frame" id="previewFrame">
+          <iframe id="preview" title="Quotation print preview"></iframe>
+        </div>
+      </div>
+      <p class="preview-note">
+        <span id="previewNote">Bilingual · letterhead ready</span>
+        <span>Browser print → Save as PDF</span>
+      </p>
+    </section>
+  </div>
+</main>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+<script type="module" src="/quote.js"></script>
+</body>
+</html>

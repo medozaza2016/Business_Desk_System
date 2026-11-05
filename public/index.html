@@ -1,6 +1,194 @@
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Challenger Quotation Platform</title><link rel="stylesheet" href="/app.css"></head>
-<body><main class="shell"><header><div><p class="eyebrow">CHALLENGER QUOTATION PLATFORM</p><h1>Quotation workspace</h1><p class="muted">Multi-company quotation management, hosted on Cloudflare.</p></div><span class="status">Foundation online</span></header>
-<section class="panel"><h2>Application status</h2><p id="health">Checking Worker and database connection...</p><button id="refresh">Check connection</button></section>
-<section class="panel"><h2>Next modules</h2><div class="tiles"><article><b>Company administration</b><p>Central control of company profiles and assets.</p></article><article><b>Quotation templates</b><p>Independent branded templates for each company.</p></article><article><b>Quotation history</b><p>Search and retrieve saved quotations.</p></article></div></section>
-<footer>Cloudflare Workers · D1 · R2</footer></main><script src="/app.js"></script></body></html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="light">
+<title>Challenger Quotation Desk</title>
+<link rel="stylesheet" href="/app.css">
+</head>
+<body>
+
+<header class="topbar" id="topbar" hidden>
+  <a class="brand" href="/"><b>CHALLENGER</b> QUOTATION DESK <small>valuation records</small></a>
+  <span class="topbar-rule"></span>
+  <label class="switch">Company
+    <select id="companySelect" aria-label="Active company"></select>
+  </label>
+  <span class="spacer"></span>
+  <span class="chip" id="sessionChip">—</span>
+  <a class="btn ghost small" href="/?view=settings" id="settingsLink">Settings</a>
+  <button class="btn ghost small" id="logoutBtn" type="button">Sign out</button>
+</header>
+
+<main class="gate" id="gate" hidden>
+  <div class="gate-card">
+    <div class="gate-rule"></div>
+    <div class="gate-body">
+      <p class="eyebrow" id="gateEyebrow">Challenger quotation desk</p>
+      <h1 id="gateTitle">Enter the passcode</h1>
+      <p class="lede" id="gateLede">One shared passcode unlocks the desk for the whole team.</p>
+      <p class="error" id="gateError" hidden></p>
+      <form id="gateForm" novalidate>
+        <label class="field" id="nameField">
+          <span class="field-label">Your name <em>optional, for the audit trail</em></span>
+          <input id="gateName" name="name" autocomplete="name" maxlength="60" placeholder="Ahmed">
+        </label>
+        <label class="field">
+          <span class="field-label">Passcode</span>
+          <input id="gatePasscode" name="passcode" type="password" autocomplete="current-password" required placeholder="••••••••">
+        </label>
+        <div class="gate-actions">
+          <button class="btn primary block" id="gateSubmit" type="submit">Unlock desk</button>
+        </div>
+      </form>
+      <p class="gate-foot" id="gateFoot">Sessions last 12 hours. Rotate the passcode any time in Settings.</p>
+    </div>
+  </div>
+</main>
+
+<main class="view" id="workspaceView" hidden>
+  <div class="workspace">
+    <section class="rail" aria-label="New quotation">
+      <div class="rail-head">
+        <h2>New quotation</h2>
+        <span class="rail-step" id="railStep">01 — entry</span>
+      </div>
+      <form id="quoteForm" novalidate>
+        <label class="field">
+          <span class="field-label">Quotation no. <em id="numberHint">auto</em></span>
+          <span class="prefix">
+            <span class="prefix-tag" id="prefixTag">QA-</span>
+            <input id="quoteNumber" name="quote_number" maxlength="60" autocomplete="off" spellcheck="false" placeholder="2026-00001">
+          </span>
+        </label>
+        <label class="field"><span class="field-label">Date</span><input id="quoteDate" type="date" required></label>
+        <label class="field"><span class="field-label">Vehicle model</span><input id="model" required maxlength="120" placeholder="AUDI A8"></label>
+        <label class="field"><span class="field-label">Year</span><input id="year" required maxlength="20" inputmode="numeric" placeholder="2012"></label>
+        <label class="field"><span class="field-label">Chassis number</span><input id="chassis" required maxlength="120" placeholder="WAUZZZ4H0DN000001"></label>
+        <label class="field">
+          <span class="field-label">Estimated value <em id="currencyTag">AED</em></span>
+          <input id="amount" required inputmode="decimal" placeholder="15,000.00">
+        </label>
+        <button class="btn primary block" type="submit">Save quotation</button>
+        <p class="rail-note">Each saved sheet is an immutable snapshot of the template, company details and amount-in-words at the moment of issue.</p>
+      </form>
+    </section>
+
+    <section class="ledger">
+      <header class="ledger-head">
+        <div>
+          <h1 id="ledgerTitle">Quotations</h1>
+          <p class="muted" id="ledgerMeta">Loading records…</p>
+        </div>
+        <div class="ledger-actions">
+          <form class="search" id="searchForm">
+            <input id="searchInput" type="search" placeholder="Number, model, chassis" aria-label="Search quotations">
+            <button class="btn ghost small" type="submit">Search</button>
+          </form>
+          <a class="btn ghost small" id="csvLink" href="#">Export CSV</a>
+        </div>
+      </header>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th scope="col">Quotation</th>
+              <th scope="col">Date</th>
+              <th scope="col">Vehicle</th>
+              <th scope="col" class="money-head">Estimated value</th>
+              <th scope="col"></th>
+            </tr>
+          </thead>
+          <tbody id="quotesBody"></tbody>
+        </table>
+        <p class="empty" id="emptyState" hidden>
+          <b>No quotations yet</b>
+          Enter a vehicle on the left to issue the first record.
+        </p>
+      </div>
+    </section>
+  </div>
+</main>
+
+<main class="view" id="settingsView" hidden>
+  <div class="settings-wrap">
+    <header class="settings-head">
+      <p class="eyebrow">Configuration</p>
+      <h1>Desk settings</h1>
+      <p class="muted">Company details, print template versions and the shared passcode.</p>
+    </header>
+    <div class="settings-grid">
+      <section class="panel">
+        <div class="card-head"><h2>Company profile</h2><a class="btn ghost small" href="/">Back to desk</a></div>
+        <div class="card-body">
+          <form id="companyForm" novalidate>
+            <div class="grid-2">
+              <label class="field"><span class="field-label">Display name</span><input id="cName" required maxlength="120"></label>
+              <label class="field"><span class="field-label">Legal name</span><input id="cLegal" maxlength="160"></label>
+              <label class="field"><span class="field-label">Phone</span><input id="cPhone" maxlength="40"></label>
+              <label class="field"><span class="field-label">Email</span><input id="cEmail" type="email" maxlength="160"></label>
+              <label class="field span-2"><span class="field-label">Address</span><input id="cAddress" maxlength="300"></label>
+              <label class="field"><span class="field-label">Number prefix</span><input id="cPrefix" maxlength="12"></label>
+              <label class="field"><span class="field-label">Currency</span><input id="cCurrency" maxlength="3"></label>
+            </div>
+            <div class="card-actions">
+              <button class="btn primary" type="submit">Save company</button>
+              <a class="btn ghost" id="csvLink2" href="#">Export CSV</a>
+              <button class="btn danger" type="button" id="deactivateBtn">Deactivate</button>
+            </div>
+          </form>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="card-head"><h2>Print template</h2><span class="chip" id="templateChip">v1</span></div>
+        <div class="card-body">
+          <ul class="list" id="templateList"></ul>
+          <hr class="rule">
+          <label class="field">
+            <span class="field-label">Template HTML <em>publishes as a new version</em></span>
+            <textarea id="templateHtml" spellcheck="false"></textarea>
+          </label>
+          <div class="card-actions">
+            <button class="btn primary" type="button" id="templateSave">Publish version</button>
+            <button class="btn ghost" type="button" id="templateLoad">Reload active</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="card-head"><h2>Shared access</h2><span class="chip" id="passcodeChip">12h session</span></div>
+        <div class="card-body">
+          <form id="passcodeForm" novalidate>
+            <label class="field"><span class="field-label">Current passcode</span><input id="pcCurrent" type="password" required autocomplete="current-password"></label>
+            <label class="field"><span class="field-label">New passcode <em>min 6 characters</em></span><input id="pcNext" type="password" required minlength="6" autocomplete="new-password"></label>
+            <label class="field"><span class="field-label">Repeat new passcode</span><input id="pcRepeat" type="password" required minlength="6" autocomplete="new-password"></label>
+            <div class="card-actions"><button class="btn primary" type="submit">Rotate passcode</button></div>
+          </form>
+          <p class="rail-note">Rotating ends every other session immediately; this tab stays signed in.</p>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="card-head"><h2>Companies</h2><span class="chip" id="companyCount">0</span></div>
+        <div class="card-body">
+          <ul class="list" id="companyList"></ul>
+          <hr class="rule">
+          <form id="newCompanyForm" novalidate>
+            <div class="grid-2">
+              <label class="field"><span class="field-label">New company</span><input id="newCompanyName" required maxlength="120" placeholder="Company name"></label>
+              <label class="field"><span class="field-label">Prefix</span><input id="newCompanyPrefix" maxlength="12" placeholder="QA-"></label>
+            </div>
+            <div class="card-actions"><button class="btn" type="submit">Add company</button></div>
+          </form>
+        </div>
+      </section>
+    </div>
+  </div>
+</main>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+<script type="module" src="/app.js"></script>
+</body>
+</html>
