@@ -596,7 +596,9 @@ function fitStudioPreview() {
   const frame = $("studioFrame");
   const iframe = $("studioPreview");
   if (!stage || stage.offsetParent === null) return;
-  const available = stage.clientWidth - 32;
+  /* read the stage's padding instead of assuming 16px: it tightens on phones */
+  const style = getComputedStyle(stage);
+  const available = stage.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
   if (available <= 0) return;
   const scale = Math.min(available / A4_W, 1);
   frame.style.width = `${Math.round(A4_W * scale)}px`;
@@ -886,6 +888,8 @@ function showView(name) {
   $("gate").hidden = true;
   $("workspaceView").hidden = name !== "desk";
   $("settingsView").hidden = name !== "settings";
+  /* the topbar's Settings button would only reload the page you are already on */
+  $("settingsLink").hidden = name === "settings";
   const url = new URL(location.href);
   if (name === "settings") url.searchParams.set("view", "settings");
   else {

@@ -1036,11 +1036,14 @@ hr.rule { border: 0; border-top: 1px dashed var(--line); margin: 16px 0; }
 }
 
 @media (max-width: 1080px) {
-  .settings-wrap { grid-template-columns: 1fr; }
-  .settings-nav { position: static; gap: 10px; }
+  /* minmax(0, 1fr), not 1fr: the nowrap tab strip would otherwise push the
+     whole page wider than the phone (a 1fr track never shrinks below content) */
+  .settings-wrap { grid-template-columns: minmax(0, 1fr); }
+  .settings-nav { position: static; gap: 10px; min-width: 0; }
+  .settings-panes { min-width: 0; }
   .settings-nav-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; padding-bottom: 8px; }
   .settings-nav-head h1 { font-size: 16px; }
-  .settings-menu { flex-direction: row; gap: 2px; overflow-x: auto; }
+  .settings-menu { flex-direction: row; gap: 2px; overflow-x: auto; min-width: 0; }
   .settings-tab {
     align-items: center;
     border-left: 0;
@@ -1210,6 +1213,68 @@ hr.rule { border: 0; border-top: 1px dashed var(--line); margin: 16px 0; }
   .card-actions .btn { flex: 1 1 140px; }
   .preview-stage { padding: 10px; }
   .preview-note { flex-direction: column; align-items: flex-start; gap: 2px; }
+
+  /* --- settings on a phone: the sidebar index becomes a 2×2 sheet of tabs --- */
+  .settings-nav {
+    padding: 12px 12px 10px;
+    border-left: 1px solid var(--line);
+    border-top: 3px solid var(--red);
+    gap: 10px;
+  }
+  .settings-nav-head { padding-bottom: 10px; }
+  .settings-nav-head .eyebrow { font-size: 9.5px; }
+  .settings-nav-head h1 { font-size: 15px; }
+
+  /* the counters ("4 versions", "3 companies") are the point of the index — keep them */
+  .settings-menu { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; overflow: visible; }
+  .settings-tab {
+    align-items: flex-start;
+    justify-content: center;
+    min-height: 52px;
+    padding: 8px 10px;
+    border: 1px solid var(--line-soft);
+    border-radius: var(--radius);
+    background: #fffdfa;
+    white-space: normal;
+  }
+  .settings-tab small { display: block; }
+  .settings-tab[aria-current="true"] {
+    border-color: #dca9a5;
+    box-shadow: inset 3px 0 0 var(--red);
+    background: #fff;
+  }
+
+  /* the sidebar's way out is hidden with the sidebar — phones still need one */
+  .settings-nav-foot { display: block; margin-top: 0; padding-top: 10px; }
+  .settings-nav-foot .btn { width: 100%; }
+
+  /* one version per card: name on top, actions in a 2×2 grid underneath */
+  .version-row { grid-template-columns: minmax(0, 1fr); gap: 8px; padding: 10px 12px; }
+  .version-main b { font-size: 13px; }
+  .version-main small { white-space: normal; }
+  .version-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px;
+    padding-top: 8px;
+    border-top: 1px solid var(--line-soft);
+  }
+
+  /* company rows: a long name pushes the chip and "Use" onto the next line */
+  .list li { flex-wrap: wrap; gap: 6px 10px; padding: 12px 0; }
+  .list li > span:first-child { flex: 1 1 140px; min-width: 0; }
+
+  .logo-preview { height: 96px; }
+  .logo-buttons .btn { flex: 1 1 0; }
+
+  /* "Publish version" would break across two lines when sharing a row at 360px */
+  .studio-col .card-actions .btn { flex: 1 1 100%; }
+
+  /* the checkbox is 16px; the whole line is the target, so make it a thumb's worth */
+  .checkline { min-height: 44px; }
+
+  /* deactivate sits on its own line, away from Save */
+  .card-actions .btn.danger { flex: 1 1 100%; }
 
   /* a fixed toast would otherwise run off the right edge */
   .toast { left: 12px; right: 12px; bottom: 12px; max-width: none; }
