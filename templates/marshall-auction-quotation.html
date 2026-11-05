@@ -663,6 +663,37 @@
   .bottom-stripe {
     background: linear-gradient(90deg, #10234F 0 72%, #D6A62E 72% 100%);
   }
+
+  /* Marshal legal-name header and enlarged logo, with a slightly lower layout. */
+  .brand-logo {
+    top: 1mm;
+    width: 34mm;
+    height: 34mm;
+  }
+  .brand-ar {
+    top: 35.5mm;
+    font-size: 6.2mm;
+    line-height: 1.25;
+  }
+  .brand-en {
+    top: 46.5mm;
+    font-size: 7.2mm;
+    line-height: 1.05;
+  }
+
+  .titlebar { top: 55.6mm; }
+  .meta { top: 74.3mm; }
+  .intro { top: 86.5mm; }
+  .vehicle { top: 108.2mm; }
+  .estimated { top: 155mm; }
+  .statement {
+    top: 172mm;
+    height: 31mm;
+  }
+  .statement-ar { top: 1mm; height: 12mm; }
+  .statement-line { top: 15mm; }
+  .statement-en { top: 16.5mm; height: 13mm; }
+
 </style>
 </head>
 <body>
@@ -671,8 +702,8 @@
     <div class="brand-logo">
 <img class="logo-upload" src="{{logo_url}}" alt="">
     </div>
-    <div class="brand-ar"><span class="accent">{{company_legal_name_ar_head}}</span> {{company_legal_name_ar_tail}}</div>
-    <div class="brand-en"><span class="accent">{{company_legal_name_en_head}}</span> {{company_legal_name_en_tail}}</div>
+    <div class="brand-ar"><span class="accent">مارشال</span> للمزادات العلنية ش.ذ.م</div>
+    <div class="brand-en"><span class="accent">Marshal</span> Auctions L.L.C</div>
   </header>
 
   <section class="titlebar" aria-label="Quotation title">
