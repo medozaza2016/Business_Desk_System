@@ -106,7 +106,7 @@ async function handleApi(request,env,url){
   ]);
   return json({template:{id,name:b.name.trim(),version,active:true}},201);
  }
-\n if(url.pathname==="/api/quotations" && request.method==="GET"){
+ if(url.pathname==="/api/quotations" && request.method==="GET"){
   const companyId=url.searchParams.get("company_id");if(!companyId)return json({error:"company_id_required"},400);
   const q=url.searchParams.get("q")||"",limit=Math.min(Math.max(Number(url.searchParams.get("limit")||50),1),100);
   const rows=await env.DB.prepare("SELECT id,quote_number,quote_date,model,year,chassis,amount_cents,created_at FROM quotations WHERE company_id=? AND deleted_at IS NULL AND (quote_number LIKE ? OR model LIKE ? OR chassis LIKE ?) ORDER BY quote_date DESC,created_at DESC LIMIT ?")
