@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Quotation {{quote_number}}</title>
+  <style>
+    :root { color-scheme: light; }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      padding: 36px;
+      color: #202020;
+      background: #fff;
+      font-family: Arial, Helvetica, sans-serif;
+      font-size: 14px;
+      line-height: 1.5;
+    }
+    .quotation { max-width: 900px; margin: 0 auto; }
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 24px;
+      padding-bottom: 18px;
+      border-bottom: 2px solid #222;
+    }
+    .company-name { margin: 0 0 8px; font-size: 24px; line-height: 1.2; }
+    .company-details { color: #444; }
+    .quotation-meta { min-width: 180px; text-align: right; }
+    .quotation-label { font-size: 20px; font-weight: 700; letter-spacing: .04em; }
+    .quotation-number { margin-top: 5px; font-weight: 700; }
+    .quotation-date { color: #555; }
+    table { width: 100%; margin: 28px 0 22px; border-collapse: collapse; }
+    th, td { padding: 11px 12px; border: 1px solid #777; text-align: left; vertical-align: top; }
+    th { width: 34%; background: #f0f0f0; font-weight: 700; }
+    .amount { font-size: 18px; font-weight: 700; }
+    .statement { margin: 22px 0; }
+    .closing { margin-top: 28px; }
+    .footer {
+      margin-top: 48px;
+      padding-top: 12px;
+      border-top: 1px solid #bbb;
+      color: #555;
+      font-size: 12px;
+    }
+    @media print {
+      @page { size: A4; margin: 15mm; }
+      body { padding: 0; }
+      .quotation { max-width: none; }
+    }
+    @media screen and (max-width: 640px) {
+      body { padding: 18px; }
+      .header { flex-direction: column; }
+      .quotation-meta { text-align: left; }
+    }
+  </style>
+</head>
+<body>
+  <main class="quotation">
+    <header class="header">
+      <div>
+        <h1 class="company-name">{{company_name}}</h1>
+        <div class="company-details">
+          <div>{{company_address}}</div>
+          <div>{{company_phone}} · {{company_email}}</div>
+        </div>
+      </div>
+      <div class="quotation-meta">
+        <div class="quotation-label">QUOTATION</div>
+        <div class="quotation-number">{{quote_number}}</div>
+        <div class="quotation-date">{{quote_date}}</div>
+      </div>
+    </header>
+
+    <table aria-label="Vehicle quotation details">
+      <tbody>
+        <tr><th scope="row">Vehicle / Model</th><td>{{model}}</td></tr>
+        <tr><th scope="row">Year</th><td>{{year}}</td></tr>
+        <tr><th scope="row">Chassis Number</th><td>{{chassis}}</td></tr>
+        <tr><th scope="row">Estimated Market Value</th><td class="amount">{{currency}} {{amount}}</td></tr>
+      </tbody>
+    </table>
+
+    <p class="statement">
+      Estimated market value as of {{quote_date}} is {{currency}} {{amount}}
+      ({{amount_words}} only).
+    </p>
+    <p class="closing">We trust the above is in order.</p>
+
+    <footer class="footer">
+      {{company_name}} · {{company_address}}
+    </footer>
+  </main>
+  <script>
+    window.addEventListener("load", () => {
+      if (new URLSearchParams(window.location.search).has("print")) {
+        window.print();
+      }
+    });
+  </script>
+</body>
+</html>
