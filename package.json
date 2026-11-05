@@ -8,10 +8,10 @@
     "deploy": "wrangler deploy",
     "db:migrate:local": "wrangler d1 migrations apply challenger-quotation-db --local",
     "db:migrate:remote": "wrangler d1 migrations apply challenger-quotation-db --remote",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.web.json"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^4.20261105.0",
+    "@cloudflare/workers-types": "^5.20261104.1",
     "typescript": "^5.9.3",
     "wrangler": "^4.45.0"
   }
