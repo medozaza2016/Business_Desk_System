@@ -158,7 +158,7 @@
     </header>
 
     <div class="module-picker-grid">
-      <article class="module-choice module-choice-available">
+      <article class="module-choice module-choice-available" role="button" tabindex="0" data-module="quotations" aria-label="Open Quotation Management">
         <div class="module-choice-top">
           <span class="module-state">Available</span>
         </div>
@@ -172,12 +172,12 @@
         </div>
         <h2>Quotation Management</h2>
         <p>Create company-specific quotations, manage templates and signed documents, and keep a searchable quotation history.</p>
-        <button class="module-choice-action" id="openQuotations" type="button">
-          <span>Open module</span><span aria-hidden="true">→</span>
-        </button>
+        <div class="module-choice-hint">
+          <span>Open Quotation Management</span><span class="module-choice-arrow" aria-hidden="true">↗</span>
+        </div>
       </article>
 
-      <article class="module-choice module-choice-coming">
+      <article class="module-choice module-choice-coming" role="button" tabindex="0" data-module="invoicing" aria-label="View Invoicing preview">
         <div class="module-choice-top">
           <span class="module-state future">Coming soon</span>
         </div>
@@ -192,9 +192,9 @@
         </div>
         <h2>Invoicing</h2>
         <p>A dedicated module for creating and tracking invoices as independent business documents.</p>
-        <button class="module-choice-action" id="openInvoicingPreview" type="button">
-          <span>View preview</span><span aria-hidden="true">→</span>
-        </button>
+        <div class="module-choice-hint">
+          <span>View module preview</span><span class="module-choice-arrow" aria-hidden="true">↗</span>
+        </div>
       </article>
     </div>
 
