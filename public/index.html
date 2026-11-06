@@ -4,13 +4,14 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="color-scheme" content="light">
-<title>Quotation Desk</title>
+<meta name="description" content="A centralized workspace for company quotations, business documents and customer operations.">
+<title>Business Desk</title>
 <link rel="stylesheet" href="/app.css">
 </head>
 <body>
 
 <header class="topbar" id="topbar" hidden>
-  <a class="brand" href="/"><b>QUOTATION DESK</b><small>valuation records</small></a>
+  <a class="brand" href="/"><b>BUSINESS DESK</b><small>documents &amp; customer operations</small></a>
   <span class="topbar-rule"></span>
   <label class="switch">Company
     <select id="companySelect" aria-label="Active company"></select>
@@ -22,24 +23,126 @@
 </header>
 
 <main class="gate" id="gate" hidden>
-  <div class="gate-card">
-    <div class="gate-rule"></div>
-    <div class="gate-body">
-      <p class="eyebrow" id="gateEyebrow">quotation desk</p>
-      <h1 id="gateTitle">Enter the passcode</h1>
-      <p class="lede" id="gateLede">One shared passcode unlocks the desk for the whole team.</p>
-      <p class="error" id="gateError" hidden></p>
-      <form id="gateForm" novalidate>
-        <label class="field">
-          <span class="field-label">Passcode</span>
-          <input id="gatePasscode" name="passcode" type="password" autocomplete="current-password" required placeholder="••••••••">
-        </label>
-        <div class="gate-actions">
-          <button class="btn primary block" id="gateSubmit" type="submit">Unlock desk</button>
+  <div class="landing-shell">
+    <header class="landing-header">
+      <a class="landing-brand" href="/" aria-label="Business Desk home">
+        <span class="landing-brand-name"><b>BUSINESS</b> DESK</span>
+        <span class="landing-brand-subtitle">DOCUMENTS &amp; CUSTOMER OPERATIONS</span>
+      </a>
+      <nav class="landing-nav" aria-label="Main navigation">
+        <a href="#overview">Overview</a>
+        <a href="#modules">Modules</a>
+        <a class="btn primary small" href="#login">Sign in</a>
+      </nav>
+    </header>
+
+    <section class="landing-hero" id="overview" aria-labelledby="landingTitle">
+      <div class="landing-intro">
+        <p class="eyebrow">Multi-company business workspace</p>
+        <h2 id="landingTitle">Every customer document. One controlled workspace.</h2>
+        <p class="landing-description">Create professional quotations, manage company documents and maintain a searchable business history. Invoicing and customer notifications are the next steps.</p>
+        <div class="landing-statuses" aria-label="Platform availability">
+          <span class="landing-status available">Quotations available</span>
+          <span class="landing-status planned">Invoicing · Phase 2</span>
         </div>
-      </form>
-      <p class="gate-foot" id="gateFoot">Sessions last 12 hours. Rotate the passcode any time in Settings.</p>
-    </div>
+        <div class="landing-benefits">
+          <p><span aria-hidden="true">01</span> Document creation</p>
+          <p><span aria-hidden="true">02</span> Multi-company management</p>
+          <p><span aria-hidden="true">03</span> Customer communication</p>
+        </div>
+      </div>
+
+      <section class="gate-card landing-login" id="login" aria-label="Secure workspace access">
+        <div class="gate-rule"></div>
+        <div class="gate-body">
+          <p class="eyebrow" id="gateEyebrow">Secure workspace access</p>
+          <h1 id="gateTitle">Access your workspace</h1>
+          <p class="lede" id="gateLede">Enter your shared access passcode to continue.</p>
+          <p class="error" id="gateError" role="alert" hidden></p>
+          <form id="gateForm" novalidate>
+            <label class="field">
+              <span class="field-label">Shared access passcode</span>
+              <input id="gatePasscode" name="passcode" type="password" autocomplete="current-password" required placeholder="••••••••">
+            </label>
+            <div class="gate-actions">
+              <button class="btn primary block" id="gateSubmit" type="submit">Unlock workspace</button>
+            </div>
+          </form>
+          <p class="gate-foot" id="gateFoot">Private access, managed by your system administrator.</p>
+        </div>
+      </section>
+    </section>
+
+    <section class="landing-modules" id="modules" aria-labelledby="modulesTitle">
+      <div class="landing-section-heading">
+        <div>
+          <p class="eyebrow">Platform capabilities</p>
+          <h2 id="modulesTitle">One platform. Three capabilities.</h2>
+        </div>
+        <p>Start with quotations, then extend the workflow as your business needs grow.</p>
+      </div>
+      <div class="module-grid">
+        <article class="module-card module-live">
+          <div class="module-card-top">
+            <span class="module-index">01 / AVAILABLE</span>
+            <span class="module-state">Live</span>
+          </div>
+          <div class="module-symbol" aria-hidden="true">Q</div>
+          <h3>Quotation management</h3>
+          <p>Create company-specific quotations with automatic numbering, branded templates, printable documents and searchable history.</p>
+        </article>
+        <article class="module-card">
+          <div class="module-card-top">
+            <span class="module-index">02 / PHASE 2</span>
+            <span class="module-state future">Next</span>
+          </div>
+          <div class="module-symbol" aria-hidden="true">I</div>
+          <h3>Invoicing</h3>
+          <p>Extend the document workflow into invoice creation and management, with a planned connection to approved quotations.</p>
+        </article>
+        <article class="module-card">
+          <div class="module-card-top">
+            <span class="module-index">03 / PLANNED</span>
+            <span class="module-state future">Planned</span>
+          </div>
+          <div class="module-symbol" aria-hidden="true">N</div>
+          <h3>Customer notifications</h3>
+          <p>Plan customer updates, document delivery and reminders, with delivery status and notification history.</p>
+        </article>
+      </div>
+    </section>
+
+    <section class="landing-workflow" aria-labelledby="workflowTitle">
+      <div class="workflow-heading">
+        <p class="eyebrow">The document workflow</p>
+        <h2 id="workflowTitle">One workflow. Multiple stages.</h2>
+      </div>
+      <div class="workflow-steps">
+        <div class="workflow-step">
+          <span>01</span>
+          <b>Quotation</b>
+          <small>Available now</small>
+        </div>
+        <span class="workflow-arrow" aria-hidden="true">→</span>
+        <div class="workflow-step">
+          <span>02</span>
+          <b>Invoice</b>
+          <small>Phase 2</small>
+        </div>
+        <span class="workflow-arrow" aria-hidden="true">→</span>
+        <div class="workflow-step">
+          <span>03</span>
+          <b>Notify</b>
+          <small>Planned</small>
+        </div>
+      </div>
+    </section>
+
+    <footer class="landing-footer">
+      <a class="landing-footer-brand" href="/">BUSINESS DESK</a>
+      <span>Business documents and customer operations.</span>
+      <a href="#login">Sign in ↑</a>
+    </footer>
   </div>
 </main>
 

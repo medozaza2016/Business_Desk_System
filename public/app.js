@@ -131,15 +131,15 @@ function showGate() {
 function renderGate(status) {
   const setupMode = !status.setup;
   state.status = status;
-  $("gateEyebrow").textContent = setupMode ? "First run" : "Quotation Desk";
-  $("gateTitle").textContent = setupMode ? "Set the desk passcode" : "Enter the passcode";
+  $("gateEyebrow").textContent = setupMode ? "First-time setup" : "Secure workspace access";
+  $("gateTitle").textContent = setupMode ? "Set up your workspace" : "Access your workspace";
   $("gateLede").textContent = setupMode
-    ? "Choose the passcode your team will share. It is hashed before it touches the database and can be rotated later."
-    : "One shared passcode unlocks the desk for the whole team.";
-  $("gateSubmit").textContent = setupMode ? "Create passcode & open desk" : "Unlock desk";
+    ? "Choose the shared passcode for your team. This creates the initial company and quotation template."
+    : "Enter your shared access passcode to continue.";
+  $("gateSubmit").textContent = setupMode ? "Create passcode & continue" : "Unlock workspace";
   $("gateFoot").textContent = setupMode
-    ? "A starter company (Challenger Cars) and the bilingual A4 template are created with the passcode."
-    : `Sessions last ${status.session_hours || 12} hours. Rotate the passcode any time in Settings.`;
+    ? "Your initial workspace will include a starter company and quotation template."
+    : `Sessions last ${status.session_hours || 12} hours. Access is managed by your system administrator.`;
   showGate();
 }
 
