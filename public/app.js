@@ -238,20 +238,16 @@ async function refreshNextNumber() {
   const company = activeCompany();
   numberField.value = "";
   if (!company) {
-    $("numberHint").textContent = "auto · select company";
     return;
   }
   const date = $("quoteDate").value || todayLocal();
-  $("numberHint").textContent = "auto · calculating…";
   try {
     const data = await api(`/api/quotations/next-number?company_id=${encodeURIComponent(company.id)}&date=${encodeURIComponent(date)}`);
     if (requestId !== nextNumberRequest) return;
     numberField.value = data.quote_number;
-    $("numberHint").textContent = `auto · ${data.quote_number}`;
   } catch {
     if (requestId !== nextNumberRequest) return;
     numberField.value = "";
-    $("numberHint").textContent = "auto · unavailable";
   }
 }
 
