@@ -292,6 +292,8 @@ textarea {
 
 .gate p.lede { margin: 0 0 22px; color: var(--muted); font-size: 13px; }
 
+.turnstile-widget { display: flex; justify-content: center; min-height: 65px; margin-top: 18px; }
+
 .gate-actions { margin-top: 18px; }
 
 .gate-foot {
