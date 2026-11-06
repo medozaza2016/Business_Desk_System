@@ -1033,10 +1033,12 @@ async function loadAuditTrail({ append = false } = {}) {
     $("navAuditSummary").textContent = `${data.total} events`;
     for (const event of events) {
       const row = document.createElement("tr");
-      const when = new Date(event.created_at);
+      const stamp = String(event.created_at || "");
+      const normalizedStamp = stamp.includes("T") ? stamp : `${stamp.replace(" ", "T")}Z`;
+      const when = new Date(normalizedStamp);
       const record = event.details?.quote_number || event.details?.name || event.entity_id || "—";
       const values = [
-        Number.isNaN(when.getTime()) ? event.created_at : when.toLocaleString(),
+        Number.isNaN(when.getTime()) ? stamp : when.toLocaleString(),
         event.actor || "shared",
         event.action || "—",
         `${event.entity || "record"} · ${record}`,
