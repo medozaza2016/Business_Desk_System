@@ -284,6 +284,32 @@ const safeEqual = (a, b) => {
   return diff === 0;
 };
 
+/**
+ * Validate the single-use Turnstile token on the server. A browser-side widget
+ * alone is not a security boundary, so missing secrets, failed checks, unexpected
+ * hostnames, and unexpected actions all fail closed.
+ */
+const verifyTurnstile = async (request, env, token, expectedAction) => {
+  const secret = typeof env.TURNSTILE_SECRET === "string" ? env.TURNSTILE_SECRET.trim() : "";
+  if (!secret || typeof token !== "string" || !token.trim()) return false;
+  const form = new URLSearchParams({ secret, response: token });
+  const remoteIp = request.headers.get("CF-Connecting-IP");
+  if (remoteIp) form.set("remoteip", remoteIp);
+  try {
+    const response = await fetch("https://challenges.cloudflare.com/turnstile/v0/siteverify", {
+      method: "POST",
+      body: form,
+    });
+    if (!response.ok) return false;
+    const result = await response.json();
+    return result?.success === true
+      && result.hostname === "desk.luxoritpro.com"
+      && result.action === expectedAction;
+  } catch {
+    return false;
+  }
+};
+
 /** Best-effort in-isolate throttle: 8 failed attempts per IP per 10 minutes. */
 const loginAttempts = new Map();
 const THROTTLE_WINDOW_MS = 10 * 60 * 1000;
@@ -359,6 +385,7 @@ const authStatus = async (request, env) => {
     signed_in: !!session,
     name: session?.name || null,
     session_hours: sessionHours(env),
+    turnstile_site_key: env.TURNSTILE_SITE_KEY || null,
     /* the passcode is global (one settings row), so this timestamp is global too */
     passcode_updated_at: auth?.updated_at || null,
   });
@@ -367,6 +394,9 @@ const authStatus = async (request, env) => {
 const handleSetup = async (request, env, ctx) => {
   if (await readAuth(env)) return json({ error: "already_configured" }, 409);
   const body = await bodyJson(request);
+  if (!(await verifyTurnstile(request, env, body?.turnstile_token, "business_desk_setup"))) {
+    return json({ error: "security_check_failed" }, 403);
+  }
   const passcode = typeof body?.passcode === "string" ? body.passcode : "";
   if (passcode.length < MIN_PASSCODE_LENGTH || passcode.length > MAX_PASSCODE_LENGTH) {
     return json({ error: "passcode_too_short", min_length: MIN_PASSCODE_LENGTH }, 400);
@@ -390,6 +420,9 @@ const handleLogin = async (request, env) => {
     return json({ error: "too_many_attempts", retry_after_seconds: Math.ceil((throttle.reset - Date.now()) / 1000) }, 429);
   }
   if (!passcode) return json({ error: "passcode_required" }, 400);
+  if (!(await verifyTurnstile(request, env, body?.turnstile_token, "business_desk_login"))) {
+    return json({ error: "security_check_failed" }, 403);
+  }
   const auth = await readAuth(env);
   if (!auth) return json({ error: "setup_required" }, 409);
   const candidate = await stretchPasscode(passcode, auth.salt, auth.iterations || PBKDF2_ITERATIONS);
