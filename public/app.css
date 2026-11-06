@@ -2091,7 +2091,7 @@ dialog.scanner::backdrop { background: #14120ee6; }
 
 .module-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 14px;
 }
 
@@ -3246,16 +3246,16 @@ dialog.scanner::backdrop { background: #14120ee6; }
   background: var(--red-wash);
   color: var(--red-deep);
 }
-.module-icon-invoice {
+.module-icon-agreement {
   border-color: #d6e7da;
   background: var(--ok-wash);
   color: #245d37;
 }
-.module-preview-panel .module-icon-invoice {
+.module-preview-panel .module-icon-agreement {
   width: 62px;
   height: 62px;
 }
-.module-preview-panel .module-icon-invoice svg {
+.module-preview-panel .module-icon-agreement svg {
   width: 42px;
   height: 42px;
 }
@@ -3397,7 +3397,7 @@ dialog.scanner::backdrop { background: #14120ee6; }
   color: var(--red-deep);
 }
 
-.module-symbol-invoice {
+.module-symbol-agreement {
   border-color: #d6e7da;
   background: var(--ok-wash) !important;
   color: #245d37;
