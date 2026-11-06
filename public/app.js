@@ -283,7 +283,9 @@ function renderQuotes() {
   const total = state.quotes.length;
   const suffix = state.search ? ` matching “${state.search}”` : "";
   const order = state.sort === "date" ? "newest date first" : "highest number first";
-  $("ledgerTitle").textContent = isDeleted ? "Deleted quotations" : "Quotations";
+  $("ledgerTitle").textContent = isDeleted
+    ? `Deleted · ${company?.name || "quotations"}`
+    : (company?.name || "Quotations");
   $("ledgerMeta").textContent = company
     ? `${total} ${isDeleted ? "deleted " : ""}record${total === 1 ? "" : "s"}${suffix} · ${order} · prefix ${company.quotation_prefix || "QA-"} · currency ${company.currency || "AED"}`
     : "No company configured yet.";
@@ -439,6 +441,7 @@ async function submitQuote(event) {
     for (const id of ["model", "year", "chassis", "comments", "amount"]) $(id).value = "";
     $("model").focus();
     await refreshNextNumber();
+    if (state.quoteView !== "active") state.quoteView = "active";
     await loadQuotes();
   } catch (error) {
     toast(humanError(error), "error");
