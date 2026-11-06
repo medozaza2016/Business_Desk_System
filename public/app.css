@@ -3208,3 +3208,34 @@ dialog.scanner::backdrop { background: #14120ee6; }
   font-weight: 400;
   line-height: 1.35;
 }
+
+
+/* Distinct document symbols for each Business Desk module */
+.module-choice-icon {
+  border-radius: 5px;
+  font-size: 0;
+}
+.module-choice-icon svg {
+  display: block;
+  width: 36px;
+  height: 36px;
+  overflow: visible;
+}
+.module-icon-quotation {
+  border-color: #efcfcc;
+  background: var(--red-wash);
+  color: var(--red-deep);
+}
+.module-icon-invoice {
+  border-color: #d6e7da;
+  background: var(--ok-wash);
+  color: #245d37;
+}
+.module-preview-panel .module-icon-invoice {
+  width: 62px;
+  height: 62px;
+}
+.module-preview-panel .module-icon-invoice svg {
+  width: 42px;
+  height: 42px;
+}
