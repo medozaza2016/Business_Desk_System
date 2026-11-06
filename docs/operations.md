@@ -23,9 +23,10 @@ That zone puts a wildcard Access application — *supadock nodes (`*.luxoritpro.
 every subdomain, and it only admits `@ahmedmohamed.org` identities. The desk cannot live behind it:
 the shared passcode **is** the gate here, and `/s/<token>` customer links have to open for someone
 with no identity at all. So `desk.luxoritpro.com` carries its own, more specific Access application,
-*Challenger Quotation Desk* (`70c599f6-530d-4bd2-89a3-62938444403e`), whose only policy is
-**Bypass · Include everyone**. Access selects the most specific application, so the desk stays open
-while `nas`, `pve1`, `vault`, `hub`, `remote`, `idrac01/02` and the rest stay behind SSO.
+*Challenger Business Desk* (`70c599f6-530d-4bd2-89a3-62938444403e`; rename it freely, the id and the
+hostname are what matter), whose only policy is **Bypass · Include everyone**. Access selects the
+most specific application, so the desk stays open while `nas`, `pve1`, `vault`, `hub`, `remote`,
+`idrac01/02` and the rest stay behind SSO.
 
 Symptom when that application is missing: every request — `/`, `/api/…`, `/s/…` — answers
 `302 → https://luxoritpro.cloudflareaccess.com/cdn-cgi/access/login/desk.luxoritpro.com?…`.
