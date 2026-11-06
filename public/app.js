@@ -20,6 +20,8 @@ const state = {
   settings: null,
   settingsOpen: false,
   settingsPane: "company",
+  auditOffset: 0,
+  auditLoading: false,
 };
 
 const storage = {
@@ -1007,15 +1009,26 @@ async function rotatePasscode(event) {
   }
 }
 
-async function loadAuditTrail() {
+async function loadAuditTrail({ append = false } = {}) {
+  if (state.auditLoading) return;
   const body = $("auditBody");
-  body.textContent = "";
+  const button = $("auditLoadMore");
+  const limit = 200;
+  if (!append) {
+    state.auditOffset = 0;
+    body.textContent = "";
+    $("auditEmpty").hidden = true;
+    button.hidden = true;
+  }
+  const offset = state.auditOffset;
+  state.auditLoading = true;
+  button.disabled = true;
   try {
-    const data = await api("/api/audit?limit=300");
+    const data = await api(`/api/audit?limit=${limit}&offset=${offset}`);
+    const events = data.events || [];
     $("auditCountChip").textContent = `${data.total} events`;
     $("navAuditSummary").textContent = `${data.total} events`;
-    $("auditEmpty").hidden = (data.events || []).length > 0;
-    for (const event of data.events || []) {
+    for (const event of events) {
       const row = document.createElement("tr");
       const when = new Date(event.created_at);
       const record = event.details?.quote_number || event.details?.name || event.entity_id || "—";
@@ -1035,10 +1048,24 @@ async function loadAuditTrail() {
       }
       body.appendChild(row);
     }
+    state.auditOffset = offset + events.length;
+    $("auditEmpty").hidden = data.total > 0;
+    const showing = Math.min(state.auditOffset, data.total);
+    $("auditRangeNote").textContent = data.total
+      ? `Showing ${showing} of ${data.total} events`
+      : "No recorded activity";
+    button.hidden = state.auditOffset >= data.total;
   } catch (error) {
-    $("auditCountChip").textContent = "unavailable";
-    $("auditEmpty").hidden = false;
-    $("auditEmpty").textContent = humanError(error);
+    if (!append) {
+      $("auditCountChip").textContent = "unavailable";
+      $("auditEmpty").hidden = false;
+      $("auditEmpty").textContent = humanError(error);
+    } else {
+      toast(humanError(error), "error");
+    }
+  } finally {
+    state.auditLoading = false;
+    button.disabled = false;
   }
 }
 
@@ -1172,6 +1199,7 @@ function bind() {
     const tab = event.target.closest(".settings-tab");
     if (tab) showSettingsPane(tab.dataset.pane);
   });
+  $("auditLoadMore").addEventListener("click", () => { void loadAuditTrail({ append: true }); });
   $("passcodeForm").addEventListener("submit", rotatePasscode);
   $("ledgerSort").addEventListener("click", (event) => {
     const button = event.target.closest("button[data-sort]");
