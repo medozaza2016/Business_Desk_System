@@ -1155,10 +1155,10 @@ const handleQuotationPatch = async (request, env, ctx, session, id) => {
   } catch {
     return json({ error: "quotation_number_already_exists" }, 409);
   }
+  const updated = await env.DB.prepare("SELECT quote_number FROM quotations WHERE id=?").bind(id).first();
   audit(env, ctx, session.name, "quotation.updated", "quotation", id, {
-    quote_number: sets.some((s) => s.startsWith("quote_number="))
-      ? values[sets.findIndex((s) => s.startsWith("quote_number="))]
-      : row.quote_number,
+    quote_number: updated?.quote_number || row.quote_number,
+    previous_quote_number: updated?.quote_number !== row.quote_number ? row.quote_number : undefined,
     company_id: row.company_id,
     fields: sets.map((s) => s.replace("=?", "")),
   });
