@@ -44,6 +44,7 @@ const escapeText = (value) => String(value ?? "");
 const humanError = (error) => {
   const map = {
     invalid_passcode: "That passcode is not correct.",
+    security_check_failed: "Security verification failed or expired. Complete the check and try again.",
     passcode_required: "Enter the passcode.",
     passcode_too_short: "Passcodes need at least 6 characters.",
     invalid_current_passcode: "The current passcode is not correct.",
@@ -127,6 +128,71 @@ function toast(message, kind = "ok") {
 
 /* ------------------------------------------------------------------- gate --- */
 
+let turnstileScriptPromise = null;
+let turnstileWidgetId = null;
+let turnstileToken = "";
+
+function loadTurnstileApi() {
+  if (window.turnstile) return Promise.resolve(window.turnstile);
+  if (turnstileScriptPromise) return turnstileScriptPromise;
+  turnstileScriptPromise = new Promise((resolve, reject) => {
+    const script = document.createElement("script");
+    script.src = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
+    script.async = true;
+    script.defer = true;
+    script.onload = () => resolve(window.turnstile);
+    script.onerror = () => {
+      turnstileScriptPromise = null;
+      reject(new Error("turnstile_script_load_failed"));
+    };
+    document.head.appendChild(script);
+  });
+  return turnstileScriptPromise;
+}
+
+async function mountTurnstile(status) {
+  const target = $("turnstileWidget");
+  const submit = $("gateSubmit");
+  if (!target || !submit) return;
+  turnstileToken = "";
+  submit.disabled = true;
+  gateError("");
+  if (turnstileWidgetId !== null && window.turnstile) {
+    try { window.turnstile.remove(turnstileWidgetId); } catch { /* widget already removed */ }
+  }
+  turnstileWidgetId = null;
+  target.replaceChildren();
+  const sitekey = status.turnstile_site_key;
+  if (!sitekey) {
+    gateError("Security verification is not configured. Contact the administrator.");
+    return;
+  }
+  const action = status.setup ? "business_desk_login" : "business_desk_setup";
+  try {
+    const turnstile = await loadTurnstileApi();
+    turnstileWidgetId = turnstile.render(target, {
+      sitekey,
+      action,
+      callback(token) {
+        turnstileToken = token;
+        submit.disabled = false;
+        gateError("");
+      },
+      "expired-callback"() {
+        turnstileToken = "";
+        submit.disabled = true;
+      },
+      "error-callback"() {
+        turnstileToken = "";
+        submit.disabled = true;
+        gateError("Security verification failed to load. Refresh the page and try again.");
+      },
+    });
+  } catch {
+    gateError("Security verification could not load. Check your connection and refresh.");
+  }
+}
+
 function showGate() {
   $("topbar").hidden = true;
   $("modulesView").hidden = true;
@@ -149,6 +215,7 @@ function renderGate(status) {
   $("gateFoot").textContent = "Your initial workspace will include a starter company and quotation template.";
   $("gateFoot").hidden = !setupMode;
   showGate();
+  mountTurnstile(status);
 }
 
 function gateError(message) {
@@ -162,20 +229,29 @@ async function submitGate(event) {
   gateError("");
   const passcode = $("gatePasscode").value;
   if (!passcode) { gateError("Enter the passcode."); return; }
+  if (!turnstileToken) { gateError("Complete the security check before continuing."); return; }
   const setupMode = !state.status?.setup;
   const button = $("gateSubmit");
   button.disabled = true;
   button.textContent = setupMode ? "Creating…" : "Unlocking…";
   try {
     /* no name is collected at the gate: desk sessions are audited as "Shared user" */
-    await api(setupMode ? "/api/setup" : "/api/auth/login", { method: "POST", body: { passcode } });
+    await api(setupMode ? "/api/setup" : "/api/auth/login", {
+      method: "POST",
+      body: { passcode, turnstile_token: turnstileToken },
+    });
+    turnstileToken = "";
     $("gatePasscode").value = "";
     await boot();
     if (setupMode) toast("Desk created. Add company details in Settings.");
   } catch (error) {
     gateError(humanError(error));
+    turnstileToken = "";
+    if (window.turnstile && turnstileWidgetId !== null) {
+      try { window.turnstile.reset(turnstileWidgetId); } catch { /* widget unavailable */ }
+    }
   } finally {
-    button.disabled = false;
+    button.disabled = !turnstileToken;
     button.textContent = setupMode ? "Create passcode & open desk" : "Unlock desk";
   }
 }
