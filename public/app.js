@@ -146,9 +146,8 @@ function renderGate(status) {
     ? "Choose the shared passcode for your team. This creates the initial company and quotation template."
     : "Enter your shared access passcode to continue.";
   $("gateSubmit").textContent = setupMode ? "Create passcode & continue" : "Unlock workspace";
-  $("gateFoot").textContent = setupMode
-    ? "Your initial workspace will include a starter company and quotation template."
-    : `Sessions last ${status.session_hours || 12} hours. Access is managed by your system administrator.`;
+  $("gateFoot").textContent = "Your initial workspace will include a starter company and quotation template.";
+  $("gateFoot").hidden = !setupMode;
   showGate();
 }
 
