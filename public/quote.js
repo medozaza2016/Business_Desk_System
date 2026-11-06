@@ -128,6 +128,7 @@ const stampDate = (value) => {
 function paintShell(quote) {
   document.title = `${quote.quote_number} · Challenger Quotation`;
   $("recordNumber").textContent = quote.quote_number;
+  $("topbarRecordNumber").textContent = quote.quote_number;
   $("metaDate").textContent = quote.quote_date_text || quote.quote_date;
   $("metaVehicle").textContent = `${quote.model} · ${quote.year}`;
   $("metaChassis").textContent = quote.chassis;
@@ -576,7 +577,6 @@ async function toggleCompleted() {
 /* ------------------------------------------------------------------ bind --- */
 
 $("recordForm").addEventListener("submit", save);
-$("saveBtn").addEventListener("click", save);
 $("printBtn").addEventListener("click", printSheet);
 $("cancelBtn").addEventListener("click", cancelRecord);
 $("reprintBtn").addEventListener("click", refreshPreview);
@@ -602,6 +602,18 @@ $("sendMode").addEventListener("click", (event) => {
 });
 window.addEventListener("resize", fitPreview);
 $("preview").addEventListener("load", fitPreview);
+
+/* The number at the top of the page scrolls away, so the bar takes it over: the
+   record keeps its name at any scroll depth. The -70px margin accounts for the
+   bar's own height, so the swap happens once the big number is really gone. */
+const recordNumber = $("recordNumber");
+if (recordNumber && "IntersectionObserver" in window) {
+  new IntersectionObserver(([entry]) => {
+    $("topbarRecord").hidden = entry.isIntersecting;
+  }, { rootMargin: "-70px 0px 0px 0px" }).observe(recordNumber);
+} else {
+  $("topbarRecord").hidden = false;
+}
 
 fitPreview();
 load();

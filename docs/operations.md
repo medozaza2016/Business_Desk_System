@@ -114,6 +114,9 @@ A4 sheet. Replace it with the real artwork (A4 @ 150–300 dpi, header/footer al
   chat, and no WhatsApp credentials are stored anywhere.
 - Workflow: completing a record requires a signed page and freezes the numbers. Reopen it from the record
   header (*Mark completed* / *Reopen*) before correcting anything.
+- The record's top bar carries only the way back and the status chip: the quotation number rides up into
+  it once the big page header scrolls away, so a long sheet never loses its name. Saving is the *Save
+  changes* button under *Editable details*, beside the fields it writes — there is no second save elsewhere.
 
 ## Troubleshooting
 

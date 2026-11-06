@@ -14,8 +14,10 @@
   <span class="topbar-rule"></span>
   <a class="btn ghost small" href="/">← Desk</a>
   <span class="spacer"></span>
+  <!-- The page header scrolls away, so the record's name rides up here and stays
+       in view: the bar answers "which sheet am I on?" at any scroll depth. -->
+  <span class="topbar-record" id="topbarRecord" hidden><b id="topbarRecordNumber">—</b></span>
   <span class="chip" id="statusChip">loading</span>
-  <button class="btn primary small" id="saveBtn" type="button">Save changes</button>
 </header>
 
 <main class="record-wrap">
@@ -117,7 +119,7 @@
           <label class="field"><span class="field-label">Estimated value <em id="fCurrency">AED</em></span><input id="fAmount" inputmode="decimal" required></label>
           <label class="field"><span class="field-label">Amount in words <em>generated</em></span><input id="fWords" readonly></label>
           <div class="card-actions">
-            <button class="btn primary" type="submit">Save changes</button>
+            <button class="btn primary" type="submit" id="saveBtn">Save changes</button>
             <button class="btn ghost" type="button" id="reprintBtn">Refresh preview</button>
           </div>
         </form>
