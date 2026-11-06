@@ -34,7 +34,7 @@ export function confirmAction({
      fall back to the browser prompt rather than leaving the click dead. */
   if (typeof HTMLDialogElement === "undefined" || !HTMLDialogElement.prototype.showModal) {
     if (expectedText) {
-      const promptText = (message ? title + "\\n\\n" + message + "\\n\\n" : title + "\\n\\n") + "Type exactly: " + expectedText;
+      const promptText = (message ? title + "\n\n" + message + "\n\n" : title + "\n\n") + "Type exactly: " + expectedText;
       return Promise.resolve(window.prompt(promptText) === expectedText);
     }
     return Promise.resolve(window.confirm(message ? title + " " + message : title));
@@ -138,7 +138,7 @@ export function confirmAction({
 
     document.body.append(dialog);
     dialog.showModal();
-    /* focus the safe choice so a stray Enter never deletes anything */
+    /* typed confirmations receive focus, otherwise focus the safe choice */
     if (typedConfirmation) typedConfirmation.focus();
     else cancelBtn.focus();
   });
