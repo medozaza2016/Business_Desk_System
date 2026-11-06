@@ -2247,6 +2247,15 @@ dialog.scanner::backdrop { background: #14120ee6; }
   font-size: 10.5px;
 }
 
+.app-version-label {
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .04em;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
 .landing-footer-brand {
   color: var(--ink);
   font-size: 10px;
@@ -2526,6 +2535,19 @@ dialog.scanner::backdrop { background: #14120ee6; }
   font-weight: 800;
   letter-spacing: .13em;
 }
+
+.module-hub-footer .app-version-label { margin-left: auto; }
+
+.app-version-footer {
+  display: flex;
+  justify-content: flex-end;
+  max-width: 1500px;
+  margin: 0 auto;
+  padding: 12px 22px 18px;
+  border-top: 1px solid var(--line);
+}
+
+.app-version-footer[hidden] { display: none; }
 
 .module-preview-shell {
   width: min(780px, calc(100% - 44px));
