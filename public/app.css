@@ -3348,3 +3348,113 @@ dialog.scanner::backdrop { background: #14120ee6; }
     transform: none;
   }
 }
+
+
+/* ========================== public module refresh ========================== */
+
+.module-card {
+  min-height: 252px;
+}
+
+.module-symbol.module-symbol-icon {
+  width: 52px;
+  height: 52px;
+  margin: 20px 0 14px;
+  border-radius: 5px;
+  background: var(--paper);
+  font-size: 0;
+}
+
+.module-symbol.module-symbol-icon svg {
+  display: block;
+  width: 37px;
+  height: 37px;
+}
+
+.module-symbol-quotation {
+  border-color: #efcfcc;
+  background: var(--red-wash) !important;
+  color: var(--red-deep);
+}
+
+.module-symbol-invoice {
+  border-color: #d6e7da;
+  background: var(--ok-wash) !important;
+  color: #245d37;
+}
+
+.module-symbol-notifications {
+  border-color: #e7dcc2;
+  background: #f8f3e8 !important;
+  color: #80622c;
+}
+
+.workflow-heading {
+  flex: 0 0 245px;
+}
+
+.workflow-intro {
+  max-width: 260px;
+  margin: 9px 0 0;
+  color: #c6c1b8;
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.workflow-steps {
+  flex: 1;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.workflow-step {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.workflow-step-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 25px;
+  height: 25px;
+  border: 1px solid #5b5650;
+  border-radius: 50%;
+  color: #e36b6f;
+  font: 700 9px/1 var(--mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.workflow-step b {
+  align-self: center;
+  font-size: 10px;
+}
+
+.workflow-step small {
+  max-width: 170px;
+  line-height: 1.5;
+}
+
+@media (max-width: 900px) {
+  .workflow-heading { flex-basis: auto; }
+  .workflow-steps { width: 100%; }
+  .workflow-step { min-width: 0; }
+}
+
+@media (max-width: 760px) {
+  .module-card { min-height: 0; }
+  .module-symbol.module-symbol-icon { margin-top: 17px; }
+  .workflow-step small { max-width: 240px; }
+}
+
+@media (max-width: 520px) {
+  .workflow-heading { min-width: 0; }
+  .workflow-steps { align-items: flex-start; }
+  .workflow-step {
+    display: grid;
+    grid-template-columns: 28px minmax(0, 1fr);
+    column-gap: 9px;
+  }
+  .workflow-step-icon { grid-row: 1 / span 2; }
+  .workflow-step b { grid-column: 2; }
+  .workflow-step small { grid-column: 2; }
+}
