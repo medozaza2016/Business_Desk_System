@@ -11,7 +11,7 @@ async function loadAppVersion() {
     const response = await fetch("/version.json", { cache: "no-store" });
     if (response.ok) {
       const data = await response.json();
-      if (typeof data.version === "string" && /^\\d+\\.\\d+\\.\\d+(?:[-+][A-Za-z0-9.-]+)?$/.test(data.version)) {
+      if (typeof data.version === "string" && /^\d+\.\d+\.\d+(?:[-+][A-Za-z0-9.-]+)?$/.test(data.version)) {
         version = data.version;
       }
     }
