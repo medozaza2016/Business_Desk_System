@@ -10,7 +10,8 @@ Live: <https://quote.ahmedmohamed.org>
 - **Cloudflare Workers** — API, print rendering, all routing
 - **Workers Assets** (`./public`) — the desk UI, no framework, no build step
 - **D1** — `companies`, `templates`, `quote_sequences`, `quotations`, `quotation_scans`, `settings`, `audit_events`
-- **R2** (`ASSETS`) — per-company logos (`logos/…`) and signed pages (`scans/…`), validated PNG/JPEG/WebP
+- **R2** (`ASSETS`) — per-company logos (`logos/…`) and signed pages (`scans/…`), validated PNG/JPEG/WebP,
+  plus PDF for a signed page
 - Authentication: one shared passcode, PBKDF2-SHA256 (100,000 iterations), stateless HMAC session cookie
 
 ## Features
@@ -29,12 +30,16 @@ Live: <https://quote.ahmedmohamed.org>
 - Live A4 preview inside the quotation record page, editable details, soft cancel, per-company CSV
   export, and an audit trail of every mutation.
 - **Signed copy per quotation**, captured with an in-app scanner: the page outline is detected live, the
-  four corners stay draggable, and the stored image is a straightened, shadow-free JPEG (≤ 4 MB) in R2.
-  No SDK, no build step — the geometry runs in the browser (`public/scan.js`).
+  four corners stay draggable, and the stored image is a straightened JPEG whose paper is white — the
+  scanner divides out the lamp's colour, so an indoor photo is not left yellow, and the operator can pick
+  **Colour** or **Grey & white**. A photo already on the phone or a scanner's **PDF** can be uploaded
+  instead (≤ 12 MB), through the same card. No SDK, no build step — the geometry runs in the browser
+  (`public/scan.js`).
 - **WhatsApp hand-off** from the record page: attach the signed file through the OS share sheet, or send
-  a private `/s/<token>` link with the figures and the same picture. The desk default lives in *Settings*
+  a private `/s/<token>` link with the figures and the same page. The desk default lives in *Settings*
   and the operator can switch it for a single send. On a desktop the picture downloads and the caption is
-  copied, because `wa.me` links cannot carry a file.
+  copied, because `wa.me` links cannot carry a file. The `/s/` page is public by design — no sign-in, no
+  cookie — and prints itself, so the customer can keep a paper copy without a second tab.
 - **Workflow state**: a quotation is *issued* → *signed* (a scan exists) → *completed*. Completing needs
   the signed page, freezes the numbers, and stamps the record; reopening thaws it.
 - The ledger is ordered by quotation number (highest first) with `?sort=date` for the calendar order, and

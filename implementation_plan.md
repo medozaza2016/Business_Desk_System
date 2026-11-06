@@ -35,14 +35,18 @@ so the decisions and their reasons stay next to the code.
 
 - `IMAGE_TYPES` / `sniffImageType` shared by the logo and scan routes (signature check, not just the
   declared content type).
-- Scan routes: `GET/POST/DELETE /api/quotations/:id/scan` (4 MB cap, R2 under `scans/<company>/…`,
-  previous object deleted on replace, `etag` from the key suffix so a re-scan busts caches).
+- Scan routes: `GET/POST/DELETE /api/quotations/:id/scan` (image ≤ 4 MB, PDF ≤ 12 MB, R2 under
+  `scans/<company>/…`, previous object deleted on replace, `etag` from the key suffix so a
+  re-scan busts caches). `SCAN_TYPES` is the logo’s `IMAGE_TYPES` plus `PDF_TYPE` (`%PDF`),
+  checked by signature rather than by the declared content type.
 - Workflow: `PATCH /api/quotations/:id/status`; `PATCH`/`DELETE` on a completed record return
   `409 quotation_completed`.
 - Share link: `POST`/`DELETE /api/quotations/:id/share-link` — minted with the first scan, rotatable,
   revocable. The raw token never leaves the Worker (payloads carry `share_path` only).
 - Public: `GET /s/<token>` (`src/share-page.js`, one inline-styled HTML document with `og:` tags,
-  `noindex`, `no-referrer`, tight CSP), `/s/<token>/scan`, `/s/<token>/sheet`.
+  `noindex`, `no-referrer`, tight CSP) and `/s/<token>/scan`. The page’s Print button is the only
+  script, pinned by CSP hash (`SHARE_PRINT_SCRIPT`); the old `/s/<token>/sheet` route is gone —
+  the customer prints the page itself.
 - Settings: `GET`/`PATCH /api/settings` with `share_mode ∈ {file, link}`.
 - Ledger: `ORDER BY q.quote_number DESC` by default, `?sort=date` for the old order; the scan is joined
   once per page so `has_scan` needs no second round-trip. CSV follows the number order.
@@ -54,8 +58,14 @@ so the decisions and their reasons stay next to the code.
   Node (`scripts/test-scan.mjs`); the camera shell streams the back camera at 8 fps detection on a 320 px
   thumbnail, freezes the frame for corner dragging, then warps + flattens + JPEG-encodes at 1600 px.
   No camera or no permission falls back to the phone's own picker, which runs the same warp.
+  `flattenLighting` is per channel, so a tungsten lamp no longer tints the paper yellow; `paperTone`
+  then applies the finish the operator picked: **Colour** (white paper, pen and stamp in colour) or
+  **Grey & white** (a plain photocopy). The control bar sits **above** the camera frame, because on a
+  phone the bottom of the screen belongs to the browser.
 - `public/quote.js` + `quote.html` — the signed copy is the first card: picture with crop marks, mono
   measurements, send controls, completion stamp. The edit form freezes when completed.
+  Three ways in share one route: *Scan the signed page*, *Upload a photo* (the same correction without
+  the camera) and *Upload a PDF*; a PDF replaces the picture with a document tile.
 - `public/app.js` + `index.html` — ledger sort switch, state chip per row, Complete/Reopen action,
   and a *WhatsApp hand-off* settings pane.
 - `public/app.css` — signed card, segmented switch, scanner surface, settings choice list; responsive at

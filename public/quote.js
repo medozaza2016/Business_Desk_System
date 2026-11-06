@@ -4,7 +4,7 @@
    stay below it, unchanged. */
 
 import { confirmAction } from "./dialog.js";
-import { openScanner } from "./scan.js";
+import { openScanner, processPhotoFile } from "./scan.js";
 
 /** @param {string} id @returns {any} */
 const $ = (id) => document.getElementById(id);
@@ -75,7 +75,8 @@ const message = (error) => {
     scan_required: "Scan the signed page before marking the record completed.",
     scan_not_found: "The signed copy is no longer on file.",
     scan_file_required: "The scan came back empty. Try again.",
-    scan_too_large: "That scan is larger than 4 MB. Try again.",
+    scan_too_large: "That signed copy is too large. A picture must be under 4 MB, a PDF under 12 MB.",
+    unsupported_scan_type: "That file is not a JPEG, PNG, WebP picture or a PDF.",
     unsupported_image_type: "That file is not a JPEG, PNG or WebP image.",
     storage_unavailable: "File storage is not configured on this deployment.",
     share_link_unavailable: "The share link could not be created.",
@@ -146,10 +147,18 @@ function paintShell(quote) {
   $("cancelBtn").disabled = completed;
 }
 
+/** "PDF", "JPEG", "PNG" — what the file actually is, in the desk's capitals. */
+const kindLabel = (contentType) => {
+  const type = String(contentType || "").toLowerCase();
+  if (type === "application/pdf") return "PDF";
+  return type.replace("image/", "").toUpperCase() || "—";
+};
+
 /** The signed-copy card: picture, measurements, send controls, completion stamp. */
 function paintSigned(quote) {
   const scan = quote.scan || null;
   const completed = quote.status === "completed";
+  const pdf = Boolean(scan) && String(scan.content_type || "").toLowerCase() === "application/pdf";
   const image = $("signedImage");
   const chip = $("signedChip");
 
@@ -157,23 +166,34 @@ function paintSigned(quote) {
   chip.textContent = scan ? (completed ? "on file · completed" : "on file") : "missing";
   chip.className = `chip ${scan ? "ok" : "off"}`;
 
-  if (scan) {
+  if (scan && !pdf) {
     image.src = scan.url;
     image.hidden = false;
-    $("signedEmpty").hidden = true;
   } else {
     image.removeAttribute("src");
     image.hidden = true;
-    $("signedEmpty").hidden = false;
+  }
+  $("signedEmpty").hidden = Boolean(scan);
+
+  /* a PDF has no picture to show, so the frame becomes the file it is */
+  const doc = $("signedDoc");
+  doc.hidden = !pdf;
+  if (pdf) {
+    doc.href = scan.url;
+    $("signedDocName").textContent = `${quote.quote_number}-signed.pdf`;
+    $("signedDocMeta").textContent = `${bytes(scan.bytes)} · opens in a new tab`;
   }
 
-  $("scanFile").textContent = scan ? String(scan.content_type || "").replace("image/", "").toUpperCase() : "—";
+  $("scanFile").textContent = scan ? kindLabel(scan.content_type) : "—";
   $("scanSize").textContent = scan ? bytes(scan.bytes) : "—";
   $("scanDimensions").textContent = scan && scan.width ? `${scan.width} × ${scan.height} px` : "—";
   $("scanCaptured").textContent = scan ? stampDate(scan.created_at) : "—";
 
-  $("scanBtn").hidden = Boolean(scan);
-  $("replaceBtn").hidden = !scan;
+  /* the three ways in stay on screen: a re-scan and a re-upload are the same act */
+  $("scanBtn").textContent = scan ? "Scan again" : "Scan the signed page";
+  $("uploadPhotoBtn").textContent = scan ? "Replace with a photo" : "Upload a photo";
+  $("uploadPdfBtn").textContent = scan ? "Replace with a PDF" : "Upload a PDF";
+
   $("sendBlock").hidden = !scan;
   $("signedStamp").hidden = !completed;
 
@@ -302,12 +322,34 @@ async function cancelRecord() {
 
 /* ------------------------------------------------------------ signed copy --- */
 
-async function scanPage() {
+/** The tail every signed-copy flow shares: post the bytes, repaint, say what next. */
+async function storeSignedPage(form, note) {
+  const data = await apiUpload(`/api/quotations/${encodeURIComponent(state.id)}/scan`, form);
+  paint(data.quotation);
+  toast(note);
+}
+
+/** Runs one of the three ways in, with the busy flag held for its whole length. */
+async function signedCopyAction(button, run) {
   if (state.busy || !state.quote) return;
   state.busy = true;
-  const button = $("scanBtn");
   button.disabled = true;
   try {
+    await run();
+  } catch (error) {
+    toast(message(error), "error");
+  } finally {
+    /* the label is not restored: paint() has already renamed the buttons for the new
+       state ("Scan again", "Replace with a PDF"), and putting the old text back would
+       undo it */
+    state.busy = false;
+    button.disabled = false;
+  }
+}
+
+async function scanPage(event) {
+  const button = event?.currentTarget || $("scanBtn");
+  await signedCopyAction(button, async () => {
     const page = await openScanner({ title: "Scan the signed page" });
     if (!page) return;
     const form = new FormData();
@@ -315,16 +357,46 @@ async function scanPage() {
     form.append("width", String(page.width));
     form.append("height", String(page.height));
     form.append("source", "scan");
-    const data = await apiUpload(`/api/quotations/${encodeURIComponent(state.id)}/scan`, form);
-    paint(data.quotation);
-    /* the scan is only half the job: say what the next step is */
-    toast("Signed page stored. Send it on WhatsApp below.");
-  } catch (error) {
-    toast(message(error), "error");
-  } finally {
-    state.busy = false;
-    button.disabled = false;
-  }
+    await storeSignedPage(form, "Signed page stored. Send it on WhatsApp below.");
+  });
+}
+
+/**
+ * A photo from the gallery or the file system. It runs through the same detection,
+ * warp and flattening as a capture, so an uploaded picture is not left with the
+ * yellow cast and the tilted paper the camera app produced.
+ */
+async function uploadPhoto(file, button) {
+  await signedCopyAction(button, async () => {
+    const page = await processPhotoFile(file);
+    if (!page) {
+      toast("That picture could not be read. Try a JPEG or PNG straight from the camera.", "error");
+      return;
+    }
+    const form = new FormData();
+    form.append("file", new File([page.blob], "signed-page.jpg", { type: "image/jpeg" }));
+    form.append("width", String(page.width));
+    form.append("height", String(page.height));
+    form.append("source", "upload");
+    await storeSignedPage(form, "Photo corrected and stored as the signed page.");
+  });
+}
+
+/** A PDF from a scanner app: stored byte for byte, never re-encoded. */
+async function uploadPdf(file, button) {
+  await signedCopyAction(button, async () => {
+    const form = new FormData();
+    form.append("file", file, file.name || "signed-page.pdf");
+    form.append("source", "upload");
+    await storeSignedPage(form, "PDF stored as the signed page.");
+  });
+}
+
+/** The hidden inputs are reopened through a click, so the same file can be re-picked. */
+function pickFile(inputId) {
+  const input = $(inputId);
+  input.value = "";
+  input.click();
 }
 
 async function removeScan() {
@@ -396,7 +468,7 @@ async function scanAsFile() {
   if (!response.ok) throw new Error("scan_not_found");
   const blob = await response.blob();
   const type = blob.type || scan.content_type || "image/jpeg";
-  const ext = type === "image/png" ? "png" : type === "image/webp" ? "webp" : "jpg";
+  const ext = type === "image/png" ? "png" : type === "image/webp" ? "webp" : type === "application/pdf" ? "pdf" : "jpg";
   return new File([blob], `${state.quote.quote_number}-signed.${ext}`, { type });
 }
 
@@ -511,7 +583,16 @@ $("printBtn").addEventListener("click", printSheet);
 $("cancelBtn").addEventListener("click", cancelRecord);
 $("reprintBtn").addEventListener("click", refreshPreview);
 $("scanBtn").addEventListener("click", scanPage);
-$("replaceBtn").addEventListener("click", scanPage);
+$("uploadPhotoBtn").addEventListener("click", () => pickFile("photoInput"));
+$("uploadPdfBtn").addEventListener("click", () => pickFile("pdfInput"));
+$("photoInput").addEventListener("change", (event) => {
+  const file = event.target.files && event.target.files[0];
+  if (file) uploadPhoto(file, $("uploadPhotoBtn"));
+});
+$("pdfInput").addEventListener("change", (event) => {
+  const file = event.target.files && event.target.files[0];
+  if (file) uploadPdf(file, $("uploadPdfBtn"));
+});
 $("removeScanBtn").addEventListener("click", removeScan);
 $("completeBtn").addEventListener("click", toggleCompleted);
 $("sendBtn").addEventListener("click", sendOnWhatsApp);

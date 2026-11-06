@@ -3,17 +3,27 @@
    ----------------------------------------------------------------------------
    The customer-facing view of one quotation: the figures, and the signed sheet
    itself. Rendered on the Worker (not a client-side page) so it works from a
-   WhatsApp tap with no session cookie, no JavaScript and no API round-trip —
-   one document, one image.
+   WhatsApp tap with no session cookie and no API round-trip — one document, one
+   image.
 
    It carries the desk aesthetic on purpose: whoever receives the link already
    holds the printed sheet, so the page reads as the same paperwork, not as a
    marketing landing page. Everything is inline; the only subresource is the
-   scan image, which keeps the CSP as tight as the logo route's.
+   signed copy, and the only script is the Print button below, pinned by hash in
+   the response's CSP.
    ========================================================================= */
 
 const escapeHtml = (value) =>
   String(value ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+/**
+ * The page's one script: a Print button, because "open the A4 sheet in another tab
+ * and print it from there" was a detour for a customer holding a phone. It is a
+ * fixed string on purpose — index.js hashes it into the CSP, so the response needs
+ * no per-request nonce and the page stays script-free apart from this handler.
+ */
+export const SHARE_PRINT_SCRIPT =
+  "document.addEventListener('click',function(e){var b=e.target.closest('[data-print]');if(!b)return;e.preventDefault();window.print();});";
 
 const STYLE = `
 :root {
@@ -69,6 +79,17 @@ body {
 }
 .btn.primary { background: var(--red); }
 .btn.ghost { background: transparent; border-color: var(--line); color: var(--ink-soft); }
+a.btn, button.btn { cursor: pointer; }
+button.btn { font-family: inherit; }
+/* a PDF cannot be shown as a picture, so it is shown as what it is: one document */
+.scan-doc { display: flex; align-items: center; gap: 13px; margin: 14px 22px 0; padding: 15px;
+  border: 1px solid var(--line); background: #fbfaf7; color: var(--ink); text-decoration: none; }
+.scan-doc-kind { flex: 0 0 auto; padding: 7px 9px; background: var(--red); color: #fff;
+  font-family: var(--mono); font-size: 10.5px; font-weight: 700; letter-spacing: .1em; }
+.scan-doc-body { min-width: 0; }
+.scan-doc-name { display: block; font-size: 13.5px; font-weight: 700; }
+.scan-doc-meta { display: block; margin-top: 3px; font-family: var(--mono); font-size: 10px;
+  letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
 .foot { margin-top: 26px; padding: 13px 22px; border-top: 1px solid var(--line); background: #fbfaf7;
   font-family: var(--mono); font-size: 10px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
 @media (max-width: 480px) {
@@ -79,15 +100,21 @@ body {
   .band-date { text-align: left; }
   .actions .btn { flex: 1 1 100%; }
 }
+@page { size: A4; margin: 12mm; }
 @media print {
   body { padding: 0; background: #fff; }
-  .sheet { box-shadow: none; border: 0; }
+  .sheet { max-width: none; border: 0; border-radius: 0; box-shadow: none; overflow: visible; }
   .actions { display: none; }
+  .scan-stage { margin: 0; padding: 0; border: 0; background: none; }
+  .scan-stage img { width: 100%; height: auto; box-shadow: none; }
+  .scan-doc { break-inside: avoid; margin: 0; }
+  /* the signed page gets its own sheet of paper, so it prints as large as it can */
+  .sheet.has-scan .section-head { break-before: page; }
 }`;
 
 
 /** Shared shell so the "link is gone" page cannot drift from the real one. */
-const shell = ({ title, description, image, body }) => `<!doctype html>
+const shell = ({ title, description, image, body, sheetClass = "" }) => `<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -103,12 +130,20 @@ ${image ? `<meta property="og:image" content="${escapeHtml(image)}">` : ""}
 <style>${STYLE}</style>
 </head>
 <body>
-<div class="sheet">
+<div class="sheet${sheetClass ? ` ${sheetClass}` : ""}">
   <div class="rule"></div>
 ${body}
 </div>
+<script>${SHARE_PRINT_SCRIPT}</script>
 </body>
 </html>`;
+
+const fileSize = (bytes) => {
+  const size = Number(bytes) || 0;
+  if (!size) return "document";
+  if (size < 1024 * 1024) return `${Math.max(1, Math.round(size / 1024))} KB`;
+  return `${(size / (1024 * 1024)).toFixed(1)} MB`;
+};
 
 /**
  * The customer's view of one quotation.
@@ -116,8 +151,8 @@ ${body}
  * @param {{quote_number:string,quote_date_text:string,model:string,year:string,chassis:string,
  *          amount:string,currency:string,amount_words:string,comments:string,status:string}} view.quotation
  * @param {{name:string,legal_name:string,legal_name_ar:string,phone:string,email:string}} view.company
- * @param {{bytes:number,width:number,height:number}|null} view.scan
- * @param {{sheet:string,image:string,download:string}} view.links
+ * @param {{bytes:number,width:number,height:number,content_type:string}|null} view.scan
+ * @param {{image:string,download:string}} view.links
  */
 export function renderSharePage({ quotation, company, scan, links }) {
   const legalEn = company.legal_name || company.name || "Quotation";
@@ -126,6 +161,8 @@ export function renderSharePage({ quotation, company, scan, links }) {
   const legalAr = company.legal_name_ar || "";
   const currency = quotation.currency || "AED";
   const total = `${currency} ${quotation.amount}`;
+  /* a PDF is a document, not a picture: the page shows the file instead of an <img> */
+  const isPdf = Boolean(scan) && String(scan.content_type || "").toLowerCase() === "application/pdf";
   const facts = [
     ["Vehicle", `${quotation.model} · ${quotation.year}`, ""],
     ["Chassis number", quotation.chassis, "mono"],
@@ -161,18 +198,26 @@ export function renderSharePage({ quotation, company, scan, links }) {
     <span>${scan ? "on file" : "pending"}</span>
   </div>
   ${scan
-    ? `<div class="scan-stage">
+    ? `${isPdf
+      ? `<a class="scan-doc" href="${escapeHtml(links.image)}" target="_blank" rel="noopener">
+    <span class="scan-doc-kind">PDF</span>
+    <span class="scan-doc-body">
+      <span class="scan-doc-name">Signed quotation ${escapeHtml(quotation.quote_number)}</span>
+      <span class="scan-doc-meta">${escapeHtml(fileSize(scan.bytes))} · tap to open</span>
+    </span>
+  </a>`
+      : `<div class="scan-stage">
     <a href="${escapeHtml(links.image)}" target="_blank" rel="noopener">
       <img src="${escapeHtml(links.image)}" alt="Signed copy of quotation ${escapeHtml(quotation.quote_number)}" width="${Number(scan.width) || 1240}" height="${Number(scan.height) || 1754}">
     </a>
-  </div>
+  </div>`}
   <div class="actions">
-    <a class="btn primary" href="${escapeHtml(links.download)}" download>Download the picture</a>
-    <a class="btn ghost" href="${escapeHtml(links.sheet)}" target="_blank" rel="noopener">Open the A4 sheet</a>
+    <a class="btn primary" href="${escapeHtml(links.download)}" download>Download the ${isPdf ? "PDF" : "picture"}</a>
+    <button class="btn ghost" type="button" data-print>Print</button>
   </div>`
-    : `<p class="note">The signed copy is not on file yet. Open the A4 sheet below, or ask the desk to scan it.</p>
+    : `<p class="note">The signed copy is not on file yet — ask the desk to scan the page the customer signed.</p>
   <div class="actions">
-    <a class="btn primary" href="${escapeHtml(links.sheet)}" target="_blank" rel="noopener">Open the A4 sheet</a>
+    <button class="btn primary" type="button" data-print>Print</button>
   </div>`}
 
   <div class="foot">${escapeHtml([company.phone, company.email].filter(Boolean).join(" · ") || legalEn)}</div>`;
@@ -180,7 +225,8 @@ export function renderSharePage({ quotation, company, scan, links }) {
   return shell({
     title: `Quotation ${quotation.quote_number} · ${legalEn}`,
     description: `${quotation.model} ${quotation.year} · ${total} · ${quotation.quote_date_text}`,
-    image: scan ? links.image : "",
+    image: scan && !isPdf ? links.image : "",
+    sheetClass: scan ? "has-scan" : "",
     body,
   });
 }

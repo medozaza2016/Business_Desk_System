@@ -89,15 +89,23 @@ A4 sheet. Replace it with the real artwork (A4 @ 150–300 dpi, header/footer al
 
 ## Signed copies and share links
 
-- The signed page is scanned in the browser (`public/scan.js`) and stored in R2 under
+- The signed page is captured in the browser (`public/scan.js`) and stored in R2 under
   `scans/<companyId>/<quotationId>-<random>.jpg`; `quotation_scans` holds one row per quotation, so a
   re-scan replaces the copy and deletes the previous object.
+- Two other ways in, for when a scan is not wanted: **Upload a photo** (same detection, straightening and
+  colour correction, just without the camera) and **Upload a PDF** (a scanner app's file, stored as it is,
+  ≤ 12 MB). A PDF is shown on the record and on the customer page as a document tile rather than a picture.
+- The scanner's finish is chosen per page: **Colour** keeps white paper with the pen and the stamp in
+  colour (the yellow cast of an indoor lamp is divided out), **Grey & white** produces a plain photocopy.
 - The public link is `/s/<32-char token>`; the token lives in `quotations.share_token` and is minted with
   the first scan. **Rotate** (`POST /api/quotations/:id/share-link`) invalidates every pasted link,
   **revoke** (`DELETE …/share-link`) removes it. There is no expiry: a link lives until it is rotated,
-  revoked, or the quotation is cancelled.
+  revoked, or the quotation is cancelled. The page needs **no sign-in and no cookie** — anyone holding the
+  token sees it, which is the point; the passcode only guards the desk itself and `/quote?id=…`.
 - The share page carries `noindex` and `no-referrer`, so it never turns up in a search result and never
   leaks the desk's own URL to the customer's browser.
+- *Print* on that page prints the page: the figures on one A4 sheet, the signed copy on the next. There is
+  no separate sheet route to open, so nothing on the customer's screen needs a session.
 - WhatsApp is opened, never driven: the desk hands the file or the link to the operating system's share
   sheet (mobile) or to `wa.me` plus a download (desktop). Nothing is sent without the operator picking a
   chat, and no WhatsApp credentials are stored anywhere.

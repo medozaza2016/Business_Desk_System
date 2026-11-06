@@ -53,9 +53,14 @@
     <div class="signed-body">
       <figure class="signed-frame" id="signedFrame">
         <img id="signedImage" alt="Signed copy of this quotation" hidden>
+        <a class="signed-doc" id="signedDoc" target="_blank" rel="noopener" hidden>
+          <span class="signed-doc-kind">PDF</span>
+          <span class="signed-doc-name" id="signedDocName">signed-page.pdf</span>
+          <span class="signed-doc-meta" id="signedDocMeta">tap to open</span>
+        </a>
         <div class="signed-empty" id="signedEmpty">
           <b>No signed page on file</b>
-          <span>Photograph the page the customer signed. The scanner finds the paper, evens out the light and stores the page here.</span>
+          <span>Photograph the page the customer signed, or upload the one your scanner produced. The scanner finds the paper, evens out the light and stores the page here.</span>
         </div>
         <span class="signed-stamp" id="signedStamp" hidden>Completed</span>
       </figure>
@@ -70,7 +75,12 @@
 
         <div class="signed-buttons">
           <button class="btn primary block" id="scanBtn" type="button">Scan the signed page</button>
-          <button class="btn ghost block" id="replaceBtn" type="button" hidden>Replace the scan</button>
+          <div class="signed-uploads">
+            <button class="btn ghost" id="uploadPhotoBtn" type="button">Upload a photo</button>
+            <button class="btn ghost" id="uploadPdfBtn" type="button">Upload a PDF</button>
+          </div>
+          <input type="file" id="photoInput" accept="image/png,image/jpeg,image/webp" hidden>
+          <input type="file" id="pdfInput" accept="application/pdf" hidden>
         </div>
 
         <div class="send-block" id="sendBlock" hidden>

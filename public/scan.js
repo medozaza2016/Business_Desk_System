@@ -317,36 +317,106 @@ export function warpPage(src, srcWidth, srcHeight, quad, outWidth, outHeight) {
 
 /**
  * Divides the warped page by a heavily blurred copy of itself (a cheap flat-field
- * correction). Every paper pixel then reads as white: shadows and the lamp's
- * falloff cancel out, while ink and the red stamp keep their colour.
+ * correction), per channel. Every paper pixel then reads as white and the lamp's
+ * colour stops tinting it: shadows, falloff and a tungsten bulb all cancel out,
+ * while ink and the red stamp keep their colour.
  */
-export function flattenLighting(page, radius = 0) {
+export function flattenLighting(page, options = {}) {
   const { data, width, height } = page;
-  const gray = toGray(data, width, height);
-  /* the background estimate is built on a coarse grid: far cheaper, same result */
+  const radius = typeof options === "number" ? options : Number(options.radius) || 0;
+  const balanced = typeof options === "number" || options.whiteBalance !== false;
+  /* the background estimate is built on a coarse grid — far cheaper, same result —
+     and kept per channel: dividing each channel by its own backdrop cancels the
+     lamp's warm or cool cast at the same time as its falloff, which is why a photo
+     taken under an incandescent bulb stops coming back yellow */
   const gw = Math.max(2, Math.round(width / 4));
   const gh = Math.max(2, Math.round(height / 4));
-  const coarse = new Float32Array(gw * gh);
+  const planes = [new Float32Array(gw * gh), new Float32Array(gw * gh), new Float32Array(gw * gh)];
   for (let y = 0; y < gh; y++) {
     const sy = Math.min(height - 1, Math.round((y / (gh - 1)) * (height - 1)));
     for (let x = 0; x < gw; x++) {
       const sx = Math.min(width - 1, Math.round((x / (gw - 1)) * (width - 1)));
-      coarse[y * gw + x] = gray[sy * width + sx];
+      const i = (sy * width + sx) * 4;
+      const cell = y * gw + x;
+      planes[0][cell] = data[i];
+      planes[1][cell] = data[i + 1];
+      planes[2][cell] = data[i + 2];
     }
   }
   const blurRadius = radius || Math.max(8, Math.round(Math.min(width, height) / 24));
-  const smoothed = boxBlur(coarse, gw, gh, Math.max(2, Math.round(blurRadius / 4)));
+  const background = planes.map((plane) => boxBlur(plane, gw, gh, Math.max(2, Math.round(blurRadius / 4))));
   for (let y = 0; y < height; y++) {
     const gy = Math.min(gh - 1, Math.round((y / (height - 1)) * (gh - 1)));
     for (let x = 0; x < width; x++) {
       const gx = Math.min(gw - 1, Math.round((x / (width - 1)) * (gw - 1)));
+      const cell = gy * gw + gx;
+      const red = background[0][cell];
+      const green = background[1][cell];
+      const blue = background[2][cell];
+      const luma = 0.2126 * red + 0.7152 * green + 0.0722 * blue;
       /* the 40 floor keeps a dark background from blowing up sensor noise */
-      const background = Math.max(smoothed[gy * gw + gx], 40);
-      const gain = Math.min(255 / background, 4);
+      const gain = Math.min(255 / Math.max(luma, 40), 4);
       const i = (y * width + x) * 4;
-      data[i] = data[i] * gain;
-      data[i + 1] = data[i + 1] * gain;
-      data[i + 2] = data[i + 2] * gain;
+      data[i] = data[i] * gain * (balanced ? channelGain(red, luma) : 1);
+      data[i + 1] = data[i + 1] * gain * (balanced ? channelGain(green, luma) : 1);
+      data[i + 2] = data[i + 2] * gain * (balanced ? channelGain(blue, luma) : 1);
+    }
+  }
+  return page;
+}
+
+/**
+ * Per-channel correction factor, bounded so a large coloured block (a red header,
+ * a stamp) cannot swing the hue of the whole page.
+ */
+const channelGain = (channel, luma) => {
+  if (!(channel > 0)) return 1;
+  return Math.min(1.45, Math.max(0.7, luma / channel));
+};
+
+/** Value below which `fraction` of the samples fall, from a 256-bin histogram. */
+export function percentile(values, fraction) {
+  const bins = new Float64Array(256);
+  for (let i = 0; i < values.length; i++) bins[Math.min(255, Math.max(0, Math.round(values[i])))] += 1;
+  const target = Math.max(1, Math.round(values.length * fraction));
+  let seen = 0;
+  for (let value = 0; value < 256; value++) {
+    seen += bins[value];
+    if (seen >= target) return value;
+  }
+  return 255;
+}
+
+/**
+ * The finish applied after the page is straightened and flattened:
+ *   "colour" — a levels stretch that puts the paper at white and the ink at black
+ *              while keeping the pen and the stamp in colour;
+ *   "grey"   — the same stretch on luma only: a plain photocopy of the page.
+ */
+export function paperTone(page, mode = "colour") {
+  const { data, width, height } = page;
+  const gray = toGray(data, width, height);
+  const black = percentile(gray, 0.01);
+  const white = percentile(gray, 0.985);
+  const span = white - black;
+  /* a page that already reads flat is left alone: stretching it would amplify
+     sensor noise instead of ink */
+  if (span < 24) return page;
+  const scale = 255 / span;
+  const grey = mode === "grey";
+  for (let p = 0; p < data.length; p += 4) {
+    const red = (data[p] - black) * scale;
+    const green = (data[p + 1] - black) * scale;
+    const blue = (data[p + 2] - black) * scale;
+    if (grey) {
+      const value = 0.2126 * red + 0.7152 * green + 0.0722 * blue;
+      data[p] = value;
+      data[p + 1] = value;
+      data[p + 2] = value;
+    } else {
+      data[p] = red;
+      data[p + 1] = green;
+      data[p + 2] = blue;
     }
   }
   return page;
@@ -426,12 +496,7 @@ function captureFromPicker() {
     input.addEventListener("change", async () => {
       const file = input.files && input.files[0];
       if (!file) return finish(null);
-      try {
-        const bitmap = await createImageBitmap(file);
-        finish(await pageFromBitmap(bitmap));
-      } catch {
-        finish(null);
-      }
+      finish(await processPhotoFile(file));
     });
     /* a cancelled picker fires no change event in most browsers */
     input.addEventListener("cancel", () => finish(null));
@@ -461,11 +526,12 @@ function detectionThumb(frame) {
   return { gray: toGray(small.data, width, height), width, height };
 }
 
-/** Warp + flatten + encode. Resolves {blob,width,height} or null. */
-async function renderPage(frame, quad) {
+/** Warp, flatten, tone and encode. Resolves {blob,width,height} or null. */
+async function renderPage(frame, quad, tone = "colour") {
   const size = warpSize(quad, 1600) || { width: 1240, height: 1754 };
   const page = warpPage(frame.data, frame.width, frame.height, quad, size.width, size.height);
   flattenLighting(page);
+  paperTone(page, tone);
   const canvas = element("canvas");
   canvas.width = page.width;
   canvas.height = page.height;
@@ -497,7 +563,7 @@ function frameFromBitmap(bitmap) {
 }
 
 /** Detect on the frame as a whole; falls back to the full frame when unsure. */
-async function pageFromBitmap(bitmap) {
+async function pageFromBitmap(bitmap, tone = "colour") {
   const frame = frameFromBitmap(bitmap);
   if (!frame) return null;
   const thumb = detectionThumb(frame);
@@ -505,7 +571,25 @@ async function pageFromBitmap(bitmap) {
   const quad = found
     ? found.map((point) => ({ x: (point.x / thumb.width) * frame.width, y: (point.y / thumb.height) * frame.height }))
     : [{ x: 0, y: 0 }, { x: frame.width - 1, y: 0 }, { x: frame.width - 1, y: frame.height - 1 }, { x: 0, y: frame.height - 1 }];
-  return renderPage(frame, quad);
+  return renderPage(frame, quad, tone);
+}
+
+/**
+ * A photo chosen from the gallery or the file system, corrected exactly like a
+ * capture: detect the sheet, straighten it, flatten the light, then tone it.
+ * Exported so the record page's "Upload a photo" runs the same pipeline instead of
+ * storing whatever the camera app happened to produce.
+ * @param {Blob} file
+ * @param {"colour"|"grey"} [tone]
+ * @returns {Promise<{blob:Blob,width:number,height:number}|null>}
+ */
+export async function processPhotoFile(file, tone = "colour") {
+  try {
+    const bitmap = await createImageBitmap(file);
+    return await pageFromBitmap(bitmap, tone);
+  } catch {
+    return null;
+  }
 }
 
 
@@ -545,19 +629,34 @@ function runScanner(stream, options) {
     const handleLayer = element("div", "scanner-handles");
     stage.append(video, photo, outline, handleLayer);
 
+    /* The control bar sits above the picture on purpose: on a phone the bottom of
+       the screen is where the browser puts its own chrome and the gesture bar, and a
+       shutter the thumb cannot reach is a shutter that gets missed. */
     const foot = element("footer", "scanner-foot");
     const status = element("span", "scanner-status", "starting the camera…");
     const actions = element("div", "scanner-actions");
+    const toneGroup = element("div", "scanner-modes");
+    toneGroup.setAttribute("role", "group");
+    toneGroup.setAttribute("aria-label", "Page finish");
     const retakeBtn = /** @type {HTMLButtonElement} */ (element("button", "btn ghost", "Retake"));
     const useBtn = /** @type {HTMLButtonElement} */ (element("button", "btn primary", "Use this page"));
     const captureBtn = /** @type {HTMLButtonElement} */ (element("button", "btn primary", "Capture"));
     for (const button of [retakeBtn, useBtn, captureBtn]) button.type = "button";
     retakeBtn.hidden = true;
     useBtn.hidden = true;
-    actions.append(retakeBtn, useBtn, captureBtn);
+    toneGroup.hidden = true;
+    const toneButtons = [["colour", "Colour"], ["grey", "Grey & white"]].map(([value, label]) => {
+      const button = /** @type {HTMLButtonElement} */ (element("button", "scanner-mode", label));
+      button.type = "button";
+      button.dataset.tone = value;
+      button.setAttribute("aria-pressed", "false");
+      toneGroup.append(button);
+      return button;
+    });
+    actions.append(toneGroup, retakeBtn, useBtn, captureBtn);
     foot.append(status, actions);
 
-    card.append(head, stage, foot);
+    card.append(head, foot, stage);
     dialog.append(card);
     document.body.append(dialog);
     dialog.showModal();
@@ -567,9 +666,33 @@ function runScanner(stream, options) {
     /** @type {ImageData|null} */
     let frame = null;
     let mode = "live";
+    /** @type {"colour"|"grey"} */
+    let tone = "colour";
     let dragging = -1;
     let closed = false;
     let timer = 0;
+
+    const paintTone = () => {
+      for (const button of toneButtons) {
+        button.setAttribute("aria-pressed", String(button.dataset.tone === tone));
+      }
+      /* the frozen frame approximates the finish so the choice is visible before the
+         warp runs; the page itself is rendered when the operator taps "Use this page" */
+      photo.style.filter = tone === "grey" ? "grayscale(1) contrast(1.08)" : "";
+    };
+
+    for (const button of toneButtons) {
+      button.addEventListener("click", () => {
+        tone = button.dataset.tone === "grey" ? "grey" : "colour";
+        paintTone();
+        status.textContent = tone === "grey"
+          ? "Grey & white — a plain photocopy of the page."
+          : "Colour — paper white, pen and stamp as signed.";
+        status.dataset.state = "ok";
+      });
+    }
+
+    paintTone();
 
     const handles = [0, 1, 2, 3].map(() => {
       const handle = /** @type {HTMLButtonElement} */ (element("button", "scanner-handle"));
@@ -706,6 +829,7 @@ function runScanner(stream, options) {
       captureBtn.hidden = true;
       retakeBtn.hidden = false;
       useBtn.hidden = false;
+      toneGroup.hidden = false;
       status.textContent = "Drag the corners onto the paper edge, then use the page.";
       status.dataset.state = "ok";
       draw();
@@ -719,6 +843,7 @@ function runScanner(stream, options) {
       captureBtn.hidden = false;
       retakeBtn.hidden = true;
       useBtn.hidden = true;
+      toneGroup.hidden = true;
       status.textContent = "Fill the frame with the sheet…";
       delete status.dataset.state;
       draw();
@@ -731,7 +856,7 @@ function runScanner(stream, options) {
       retakeBtn.disabled = true;
       status.textContent = "Correcting the page…";
       try {
-        const page = await renderPage(frame, orderQuad(quad));
+        const page = await renderPage(frame, orderQuad(quad), tone);
         close(page);
       } catch {
         status.textContent = "That page could not be processed. Try another capture.";

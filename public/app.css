@@ -1509,6 +1509,48 @@ tbody tr:nth-child(n+7) { animation-delay: .13s; }
 
 .signed-buttons, .send-block { display: grid; gap: 8px; }
 
+/* three ways in: the shutter, a photo already on the phone, or the scanner's PDF */
+.signed-uploads {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.signed-uploads .btn { padding: 0 8px; font-size: 10.5px; letter-spacing: .03em; }
+
+/* a PDF signed copy: the frame stops being a picture and becomes the document */
+.signed-doc {
+  display: grid;
+  justify-items: center;
+  gap: 9px;
+  padding: 30px 24px;
+  border: 1px solid #d9d4ca;
+  background: #fff;
+  color: var(--ink);
+  text-decoration: none;
+  box-shadow: 0 14px 38px -22px #1119;
+}
+
+.signed-doc-kind {
+  padding: 10px 14px;
+  background: var(--red);
+  color: #fff;
+  font-family: var(--mono);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: .16em;
+}
+
+.signed-doc-name { font-family: var(--mono); font-size: 12px; }
+
+.signed-doc-meta {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
 .send-block {
   margin-top: 2px;
   padding-top: 12px;
@@ -1589,6 +1631,10 @@ dialog.scanner {
   max-width: 100vw;
   height: 100vh;
   max-height: 100vh;
+  /* on a phone 100vh is taller than the visible area: dvh keeps the control bar
+     above the browser's own chrome instead of under it */
+  height: 100dvh;
+  max-height: 100dvh;
   margin: 0;
   padding: 0;
   border: 0;
@@ -1601,7 +1647,9 @@ dialog.scanner::backdrop { background: #14120ee6; }
 
 .scanner-card {
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr) auto;
+  /* head · controls · picture: the shutter sits above the frame, where the thumb
+     reaches it and the browser cannot cover it */
+  grid-template-rows: auto auto minmax(0, 1fr);
   height: 100%;
 }
 
@@ -1664,7 +1712,7 @@ dialog.scanner::backdrop { background: #14120ee6; }
   gap: 12px;
   flex-wrap: wrap;
   padding: 12px 18px;
-  border-top: 1px solid #ffffff1f;
+  border-bottom: 1px solid #ffffff1f;
   background: #1b1913;
 }
 
@@ -1678,7 +1726,34 @@ dialog.scanner::backdrop { background: #14120ee6; }
 .scanner-status[data-state="ok"] { color: #8bd8a6; }
 .scanner-status[data-state="error"] { color: #ff8a80; }
 
-.scanner-actions { display: flex; gap: 8px; margin-left: auto; }
+.scanner-actions { display: flex; gap: 8px; margin-left: auto; align-items: center; }
+
+/* the finish picker: colour keeps pen and stamp, grey turns the page into a copy */
+.scanner-modes {
+  display: flex;
+  margin-right: 2px;
+  border: 1px solid #ffffff33;
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.scanner-mode {
+  min-height: 30px;
+  padding: 0 9px;
+  border: 0;
+  background: transparent;
+  color: #cfc8b9;
+  font: inherit;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.scanner-mode + .scanner-mode { border-left: 1px solid #ffffff26; }
+.scanner-mode:hover { background: #ffffff14; color: #fff; }
+.scanner-mode[aria-pressed="true"] { background: #f3efe6; color: #1b1913; }
 
 .scanner-actions .btn.ghost { border-color: #ffffff33; color: #eae5da; }
 .scanner-actions .btn.ghost:hover { background: #ffffff14; border-color: #ffffff66; color: #fff; }
@@ -1720,8 +1795,10 @@ dialog.scanner::backdrop { background: #14120ee6; }
   .scanner-head { padding: 10px 12px; }
   .scanner-foot { padding: 10px 12px; gap: 8px; }
   .scanner-status { flex: 1 1 100%; }
-  .scanner-actions { flex: 1 1 100%; }
+  .scanner-actions { flex: 1 1 100%; flex-wrap: wrap; }
   .scanner-actions .btn { flex: 1 1 0; min-height: 44px; }
+  .scanner-modes { flex: 1 1 100%; margin-right: 0; }
+  .scanner-mode { flex: 1 1 0; min-height: 38px; }
   .scanner-handle { width: 40px; height: 40px; margin: -20px 0 0 -20px; }
 }
 

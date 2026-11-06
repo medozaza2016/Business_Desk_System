@@ -56,8 +56,8 @@ recorded as `Shared user`; send it from scripts or curl when you want attributio
 | `PATCH` | `/api/quotations/:id` | `{quote_number?, quote_date?, model?, year?, chassis?, comments?, amount?}` | `{quotation}` (amount words regenerated). `409 quotation_completed` once completed |
 | `DELETE` | `/api/quotations/:id` | – | `{cancelled:true}` (soft delete). `409 quotation_completed` once completed |
 | `GET` | `/api/quotations/:id/print` | – | A4 HTML sheet. `?print=1` adds the autoprint script |
-| `GET` | `/api/quotations/:id/scan` | – | The stored signed page as image bytes, `?download=1` for an attachment |
-| `POST` | `/api/quotations/:id/scan` | `multipart/form-data`: `file`, `width?`, `height?`, `source?` | `201 {quotation}` (`200` when it replaced an existing scan) |
+| `GET` | `/api/quotations/:id/scan` | – | The stored signed page as bytes (image or PDF), `?download=1` for an attachment | 
+| `POST` | `/api/quotations/:id/scan` | `multipart/form-data`: `file`, `width?`, `height?`, `source?` (`scan` \| `upload`) | `201 {quotation}` (`200` when it replaced an existing scan) |
 | `DELETE` | `/api/quotations/:id/scan` | – | `{removed:true}` — deletes the row and the R2 object |
 | `PATCH` | `/api/quotations/:id/status` | `{status: "issued" \| "completed"}` | `{quotation}`. Completing requires a scan (`409 scan_required`) |
 | `POST` | `/api/quotations/:id/share-link` | – | `201 {share_path, share_url, share_token_created_at}` — mints or **rotates** the public link |
@@ -69,20 +69,23 @@ recorded as `Shared user`; send it from scripts or curl when you want attributio
 ### Public share links
 
 `GET /s/<token>` is the customer-facing page for one quotation: the figures, the amount in words and the
-signed page. It carries no session, no JavaScript and no API call — one HTML document plus one image.
+signed page. It carries no session and no API call — one HTML document plus one image (or one PDF). The
+only script is the Print button, allowed through a `sha256` CSP hash.
 
 | Method | Path | Returns |
 |---|---|---|
 | `GET` | `/s/<token>` | HTML page (`404` + a branded "link no longer active" page for an unknown, revoked or cancelled token) |
-| `GET` | `/s/<token>/scan` | The signed page image; `?download=1` returns it as an attachment |
-| `GET` | `/s/<token>/sheet` | The A4 print sheet, identical to the desk's print route |
+| `GET` | `/s/<token>/scan` | The signed page (image or PDF); `?download=1` returns it as an attachment |
 
 - The token is 24 random bytes (base64url, 32 chars) minted with the first signed copy and stored in
   `quotations.share_token`; the raw value never appears in an `/api/` payload (only `share_path`).
 - Responses carry `x-robots-tag: noindex, nofollow, noarchive`, `referrer-policy: no-referrer` and
-  `content-security-policy: default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; …`.
+  `content-security-policy: default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; script-src 'sha256-…'; …`.
+- *Print* calls `window.print()` on the page itself: the `@media print` styles drop every control and start
+  the signed copy on its own A4 sheet, so a customer holding a phone gets paper without a second tab.
 - `og:` tags are emitted for the quotation number, the vehicle and the scan, so a WhatsApp preview shows
-  the paperwork bubble rather than a bare URL.
+  the paperwork bubble rather than a bare URL. A PDF signed copy has no `og:image` (a PDF is not an image);
+  the page shows it as a document tile with its size and a tap-through link.
 
 
 ### Company logo
@@ -125,12 +128,20 @@ accepted as long as it is unique per company (`409 quotation_number_already_exis
 - One page per quotation: `quotation_scans` is keyed by `quotation_id`, so a re-scan replaces the stored
   copy. Bytes live in R2 under `scans/<companyId>/<quotationId>-<random>.<ext>`; the row keeps only
   `r2_key` plus `bytes`, `width`, `height`, `content_type` and `source`.
-- Accepted formats and signature checking are shared with the logo route (**PNG, JPEG, WebP**,
-  `415 unsupported_image_type`). Maximum size **4 MB** (`413 scan_too_large`).
-- The desk's scanner (`public/scan.js`) produces a corrected 1600 px JPEG — detection, homography and
-  shadow removal run in the browser, so the Worker only ever verifies and stores.
-- The image is served with `cache-control: private, max-age=31536000, immutable` and an `etag` taken from
-  the random key suffix: a re-scan changes both, so the editor always shows the current page.
+- Accepted formats: **PNG, JPEG, WebP** (`≤ 4 MB`) and **PDF** (`≤ 12 MB`) — a signed page often arrives
+  from a desktop scanner as a PDF. The signature is checked in every case, so a renamed file is rejected
+  (`415 unsupported_scan_type`, `accepted` lists the four types) and an oversized one gets
+  `413 scan_too_large` with the ceiling that applied.
+- Three ways in, all landing on the same route: the in-app scanner (`source=scan`), a photo from the
+  gallery (`source=upload`, corrected in the browser by the same pipeline) and a PDF (`source=upload`,
+  stored byte for byte). `width`/`height` are only meaningful for a picture; a PDF stores `0`.
+- The desk's scanner (`public/scan.js`) produces a corrected 1600 px JPEG — detection, homography,
+  per-channel flat-fielding (which is what removes the yellow cast of an indoor lamp) and the colour /
+  grey-and-white finish all run in the browser, so the Worker only ever verifies and stores.
+- The file is served with `cache-control: private, max-age=31536000, immutable` and an `etag` taken from
+  the random key suffix: a re-scan changes both, so the editor always shows the current page. Images keep
+  the `default-src 'none'; sandbox` CSP; a PDF is served `inline` without it so the browser's own viewer
+  can render it.
 - Deleting a scan removes the row **and** the object; the record itself is untouched.
 
 ### Workflow

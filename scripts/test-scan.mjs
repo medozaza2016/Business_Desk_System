@@ -9,7 +9,8 @@
 
 import assert from "node:assert/strict";
 import {
-  detectQuad, flattenLighting, orderQuad, quadArea, solveHomography, toGray, warpPage, warpSize,
+  detectQuad, flattenLighting, orderQuad, paperTone, percentile, quadArea, solveHomography, toGray,
+  warpPage, warpSize,
 } from "../public/scan.js";
 
 let passed = 0;
@@ -89,6 +90,7 @@ test("detectQuad reports nothing on a blank dark frame", () => {
   const data = new Uint8ClampedArray(120 * 90 * 4).fill(20);
   for (let i = 3; i < data.length; i += 4) data[i] = 255;
   assert.equal(detectQuad(toGray(data, 120, 90), 120, 90), null);
+});
 
 test("solveHomography maps each source corner onto its destination", () => {
   const src = [{ x: 60, y: 40 }, { x: 340, y: 62 }, { x: 318, y: 268 }, { x: 44, y: 248 }];
@@ -157,6 +159,79 @@ test("flattenLighting evens out a page lit from one side", () => {
   assert.ok(Math.abs(left - right) < 45, `sides disagree: ${left} vs ${right}`);
 });
 
-console.log(`\n${passed} test(s) passed${process.exitCode ? " — with failures" : ""}`);
+/** A page whose paper sits on a warm (tungsten) cast, with one patch of coloured ink. */
+function pageWithCast({ paper = [240, 214, 158], ink = null, inkAt = null } = {}) {
+  const width = 90;
+  const height = 60;
+  const data = new Uint8ClampedArray(width * height * 4);
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const i = (y * width + x) * 4;
+      const inside = ink && inkAt && x >= inkAt[0] && x < inkAt[2] && y >= inkAt[1] && y < inkAt[3];
+      const colour = inside ? ink : paper;
+      data[i] = colour[0];
+      data[i + 1] = colour[1];
+      data[i + 2] = colour[2];
+      data[i + 3] = 255;
+    }
+  }
+  return { data, width, height };
+}
 
+const pixelAt = (page, x, y) => {
+  const i = (y * page.width + x) * 4;
+  return [page.data[i], page.data[i + 1], page.data[i + 2]];
+};
+
+test("flattenLighting cancels a warm cast instead of keeping it yellow", () => {
+  const page = pageWithCast();
+  flattenLighting(page);
+  const [r, g, b] = pixelAt(page, 45, 30);
+  assert.ok(Math.min(r, g, b) > 245, `paper stayed dark: ${r},${g},${b}`);
+  assert.ok(Math.max(r, g, b) - Math.min(r, g, b) <= 4, `paper is still tinted: ${r},${g},${b}`);
 });
+
+test("flattenLighting keeps a warm cast when white balance is switched off", () => {
+  const page = pageWithCast();
+  flattenLighting(page, { whiteBalance: false });
+  const [r, g, b] = pixelAt(page, 45, 30);
+  assert.ok(r > b + 20, `the cast was expected to survive, got ${r},${g},${b}`);
+});
+
+test("percentile reads the value at a fraction of the samples", () => {
+  const values = new Uint8ClampedArray(100);
+  for (let i = 0; i < 100; i++) values[i] = i < 50 ? 10 : 200;
+  assert.equal(percentile(values, 0.25), 10);
+  assert.equal(percentile(values, 0.9), 200);
+});
+
+test("paperTone stretches the page to full contrast", () => {
+  /* a neutral page on purpose: this case is about the levels stretch, not the cast,
+     which the flattening tests above already cover */
+  const page = pageWithCast({ paper: [225, 225, 225], ink: [80, 80, 80], inkAt: [0, 0, 20, 60] });
+  paperTone(page, "colour");
+  const paper = pixelAt(page, 60, 30);
+  const ink = pixelAt(page, 8, 30);
+  assert.ok(Math.min(...paper) > 240, `paper is ${paper.join(",")}`);
+  assert.ok(Math.max(...ink) < 30, `ink is ${ink.join(",")}`);
+});
+
+test("paperTone in grey leaves every pixel neutral and keeps the pen readable", () => {
+  const page = pageWithCast({ paper: [226, 220, 205], ink: [40, 70, 150], inkAt: [10, 10, 30, 50] });
+  paperTone(page, "grey");
+  const paper = pixelAt(page, 70, 30);
+  const ink = pixelAt(page, 20, 30);
+  assert.equal(paper[0], paper[1], `paper is not neutral: ${paper.join(",")}`);
+  assert.equal(paper[1], paper[2], `paper is not neutral: ${paper.join(",")}`);
+  assert.ok(paper[0] > 240, `paper is ${paper.join(",")}`);
+  assert.ok(ink[0] < 60, `the pen was washed out: ${ink.join(",")}`);
+});
+
+test("paperTone in colour keeps a blue pen blue", () => {
+  const page = pageWithCast({ paper: [226, 220, 205], ink: [40, 70, 150], inkAt: [10, 10, 30, 50] });
+  paperTone(page, "colour");
+  const ink = pixelAt(page, 20, 30);
+  assert.ok(ink[2] > ink[0] + 60, `the pen lost its colour: ${ink.join(",")}`);
+});
+
+console.log(`\n${passed} test(s) passed${process.exitCode ? " — with failures" : ""}`);

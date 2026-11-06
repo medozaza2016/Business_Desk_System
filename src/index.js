@@ -1,5 +1,5 @@
 import DEFAULT_TEMPLATE from "../templates/default-quotation.html";
-import { renderSharePage, renderShareMissing } from "./share-page.js";
+import { renderSharePage, renderShareMissing, SHARE_PRINT_SCRIPT } from "./share-page.js";
 
 /* --------------------------------------------------------------------------
    Challenger Quotation Platform - Cloudflare Worker
@@ -22,6 +22,9 @@ const MAX_LOGO_BYTES = 512 * 1024;
 const LOGO_PREFIX = "logos/";
 /* A signed copy is a phone photo of a sheet: 4 MB covers a 12 Mpx JPEG at full quality. */
 const MAX_SCAN_BYTES = 4 * 1024 * 1024;
+/* A PDF straight from a scanning app carries the same page plus its text layer, so it
+   comes through the same door with a bigger ceiling. */
+const MAX_PDF_BYTES = 12 * 1024 * 1024;
 const SCAN_PREFIX = "scans/";
 /* The WhatsApp hand-off default, stored in the settings table like the passcode row:
    "file" attaches the scan through the OS share sheet, "link" sends /s/<token>. */
@@ -44,6 +47,14 @@ const IMAGE_TYPES = [
       b[8] === 0x57 && b[9] === 0x45 && b[10] === 0x42 && b[11] === 0x50,
   },
 ];
+/** A signed page may also arrive as a PDF from a scanning app ("%PDF"). */
+const PDF_TYPE = {
+  mime: "application/pdf",
+  ext: "pdf",
+  test: (b) => b[0] === 0x25 && b[1] === 0x50 && b[2] === 0x44 && b[3] === 0x46,
+};
+/** Everything the signed-copy slot accepts: the desk's own scans or an upload. */
+const SCAN_TYPES = [...IMAGE_TYPES, PDF_TYPE];
 const AUTOPRINT_SCRIPT = 'window.addEventListener("load",function(){setTimeout(function(){window.print()},400)});';
 
 const enc = new TextEncoder();
@@ -307,6 +318,17 @@ const scriptHash = async () => {
   return scriptHashCache;
 };
 
+/* The customer page carries exactly one inline script (its Print button). Pinning it
+   by hash keeps the page JavaScript-free apart from that one handler: no nonce state,
+   nothing to leak, and a change to the script invalidates the policy loudly. */
+let shareScriptHashCache = null;
+const shareScriptHash = async () => {
+  if (!shareScriptHashCache) {
+    shareScriptHashCache = b64url(await crypto.subtle.digest("SHA-256", enc.encode(SHARE_PRINT_SCRIPT)));
+  }
+  return shareScriptHashCache;
+};
+
 const authStatus = async (request, env) => {
   const auth = await readAuth(env);
   const session = auth ? await currentSession(request, env) : null;
@@ -538,6 +560,14 @@ const handleCompanyDeactivate = async (env, ctx, session, companyId) => {
  */
 const sniffImageType = (bytes, declared) => {
   const match = IMAGE_TYPES.find((type) => type.test(bytes));
+  if (!match) return null;
+  if (declared && declared !== match.mime) return null;
+  return match;
+};
+
+/** The same check for the signed-copy slot, which also takes a PDF. */
+const sniffScanType = (bytes, declared) => {
+  const match = SCAN_TYPES.find((type) => type.test(bytes));
   if (!match) return null;
   if (declared && declared !== match.mime) return null;
   return match;
@@ -1084,26 +1114,30 @@ const handleQuotationScanGet = async (env, id, url) => {
  */
 const imageResponse = (object, scan, url, baseName) => {
   const download = ["1", "true", "yes"].includes((url.searchParams.get("download") || "").toLowerCase());
-  const ext = scan.content_type === "image/png" ? "png" : scan.content_type === "image/webp" ? "webp" : "jpg";
+  const kind = scan.content_type || "image/jpeg";
+  const ext = kind === "image/png" ? "png" : kind === "image/webp" ? "webp" : kind === "application/pdf" ? "pdf" : "jpg";
   const name = `${String(baseName).replace(/[^A-Za-z0-9._-]+/g, "-")}.${ext}`;
   return new Response(object.body, {
     headers: {
-      "content-type": scan.content_type || "image/jpeg",
+      "content-type": kind,
       "cache-control": "private, max-age=31536000, immutable",
       etag: `"${scanVersion(scan)}"`,
       "content-disposition": `${download ? "attachment" : "inline"}; filename="${name}"`,
       "x-content-type-options": "nosniff",
-      /* a scan is a picture of paperwork, never a document: no scripts, no framing */
-      "content-security-policy": "default-src 'none'; sandbox",
+      /* a scan is a picture of paperwork, never a document: no scripts, no framing.
+         A PDF is left alone — the viewer decides how to render it, and a sandbox
+         directive would be applied to the whole document. */
+      ...(kind === "application/pdf" ? {} : { "content-security-policy": "default-src 'none'; sandbox" }),
     },
   });
 };
 
 
 /**
- * Stores the page photographed (or corrected) on the phone. The bytes normally
- * arrive from the in-app scanner as a JPEG, but the signature is verified anyway so
- * a mislabelled upload can never be stored — or served — under the wrong type.
+ * Stores the signed page: a corrected capture from the in-app scanner, a photo
+ * uploaded from the gallery, or a PDF from a desktop scanner. The signature is
+ * verified in every case, so a mislabelled upload can never be stored — or served —
+ * under the wrong type.
  */
 const handleQuotationScanUpload = async (request, env, ctx, session, id) => {
   const row = await quotationById(env, id);
@@ -1119,10 +1153,13 @@ const handleQuotationScanUpload = async (request, env, ctx, session, id) => {
   if (!file || typeof file === "string" || typeof file.arrayBuffer !== "function") {
     return json({ error: "scan_file_required" }, 400);
   }
-  if (file.size > MAX_SCAN_BYTES) return json({ error: "scan_too_large", max_bytes: MAX_SCAN_BYTES }, 413);
+  if (file.size > MAX_PDF_BYTES) return json({ error: "scan_too_large", max_bytes: MAX_PDF_BYTES }, 413);
   const bytes = new Uint8Array(await file.arrayBuffer());
-  const type = sniffImageType(bytes, file.type || "");
-  if (!type) return json({ error: "unsupported_image_type", accepted: IMAGE_TYPES.map((t) => t.mime) }, 415);
+  const type = sniffScanType(bytes, file.type || "");
+  if (!type) return json({ error: "unsupported_scan_type", accepted: SCAN_TYPES.map((t) => t.mime) }, 415);
+  /* the PDF ceiling is the outer limit; a picture still has to fit the smaller one */
+  const ceiling = type.mime === PDF_TYPE.mime ? MAX_PDF_BYTES : MAX_SCAN_BYTES;
+  if (bytes.length > ceiling) return json({ error: "scan_too_large", max_bytes: ceiling }, 413);
 
   const width = Math.min(Math.max(Number(form.get("width")) || 0, 0), 20000);
   const height = Math.min(Math.max(Number(form.get("height")) || 0, 0), 20000);
@@ -1333,17 +1370,19 @@ const shareRowFor = (env, token) =>
 
 const SHARE_TOKEN_PATTERN = /^[A-Za-z0-9_-]{16,64}$/;
 
-const htmlResponse = (body, status = 200) =>
+const htmlResponse = async (body, status = 200) =>
   new Response(body, {
     status,
     headers: {
       "content-type": "text/html; charset=utf-8",
       "cache-control": "no-store",
-      /* inline styles only: the page is one document with one image */
+      /* inline styles for the document itself, plus the one hashed script behind the
+         Print button — nothing is loaded from anywhere else */
       "content-security-policy": [
         "default-src 'none'",
         "img-src 'self' data:",
         "style-src 'unsafe-inline'",
+        `script-src 'sha256-${await shareScriptHash()}'`,
         "base-uri 'none'",
         "form-action 'none'",
         "frame-ancestors 'none'",
@@ -1382,8 +1421,15 @@ const handleSharePage = async (request, env, token) => {
       phone: snapshot.phone || row.company_phone || "",
       email: snapshot.email || row.company_email || "",
     },
-    scan: scan ? { bytes: Number(scan.bytes) || 0, width: Number(scan.width) || 0, height: Number(scan.height) || 0 } : null,
-    links: { sheet: `${base}/sheet`, image: `${base}/scan`, download: `${base}/scan?download=1` },
+    scan: scan
+      ? {
+        bytes: Number(scan.bytes) || 0,
+        width: Number(scan.width) || 0,
+        height: Number(scan.height) || 0,
+        content_type: scan.content_type || "image/jpeg",
+      }
+      : null,
+    links: { image: `${base}/scan`, download: `${base}/scan?download=1` },
   }));
 };
 
@@ -1397,13 +1443,6 @@ const handleShareScan = async (env, url, token) => {
   const object = await env.ASSETS.get(scan.r2_key);
   if (!object) return json({ error: "scan_not_found" }, 404);
   return imageResponse(object, scan, url, `${row.quote_number}-signed`);
-};
-
-/** The A4 sheet, printed from the same snapshot the desk prints. */
-const handleShareSheet = async (env, url, token) => {
-  const row = SHARE_TOKEN_PATTERN.test(token) ? await shareRowFor(env, token) : null;
-  if (!row) return json({ error: "not_found" }, 404);
-  return handlePrint(env, url, row.id);
 };
 
 
@@ -1554,7 +1593,6 @@ export default {
       if (rest.length) return json({ error: "not_found" }, 404);
       try {
         if (action === "scan") return await handleShareScan(env, url, token || "");
-        if (action === "sheet") return await handleShareSheet(env, url, token || "");
         if (action) return json({ error: "not_found" }, 404);
         return await handleSharePage(request, env, token || "");
       } catch (error) {
