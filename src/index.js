@@ -315,11 +315,12 @@ const audit = (env, ctx, actor, action, entity, entityId, details = {}) => {
 /** Read-only view of the retained activity history. Details stay structured for the UI. */
 const handleAuditList = async (env, url) => {
   const limit = Math.min(Math.max(Number(url.searchParams.get("limit")) || 200, 1), 500);
+  const offset = Math.min(Math.max(Math.floor(Number(url.searchParams.get("offset")) || 0), 0), 1000000);
   const [rows, count] = await Promise.all([
     env.DB.prepare(
       "SELECT id,actor,action,entity,entity_id,details_json,created_at " +
-      "FROM audit_events ORDER BY created_at DESC,id DESC LIMIT ?"
-    ).bind(limit).all(),
+      "FROM audit_events ORDER BY created_at DESC,id DESC LIMIT ? OFFSET ?"
+    ).bind(limit, offset).all(),
     env.DB.prepare("SELECT COUNT(*) AS n FROM audit_events").first(),
   ]);
   return json({
@@ -329,6 +330,7 @@ const handleAuditList = async (env, url) => {
     }),
     total: Number(count?.n || 0),
     limit,
+    offset,
   });
 };
 
@@ -1162,7 +1164,9 @@ const handleQuotationCancel = async (env, ctx, session, id) => {
     "UPDATE quotations SET deleted_at=CURRENT_TIMESTAMP WHERE id=? AND deleted_at IS NULL"
   ).bind(id).run();
   if (!result.meta || result.meta.changes === 0) return json({ error: "quotation_not_found" }, 404);
-  audit(env, ctx, session.name, "quotation.cancelled", "quotation", id, {});
+  audit(env, ctx, session.name, "quotation.cancelled", "quotation", id, {
+    quote_number: row.quote_number, company_id: row.company_id,
+  });
   return json({ cancelled: true });
 };
 
