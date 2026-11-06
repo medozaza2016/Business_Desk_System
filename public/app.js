@@ -663,6 +663,7 @@ async function permanentlyDeleteCompany(company) {
       cancel: "Keep company",
       expectedText: company.name,
       inputLabel: "Type the exact company name to confirm",
+      copyLabel: "Copy company name",
     });
     if (!okay) return;
     const result = await api(`/api/companies/${encodeURIComponent(company.id)}/permanent`, {

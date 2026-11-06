@@ -2749,3 +2749,30 @@ dialog.scanner::backdrop { background: #14120ee6; }
   .audit-pagination { align-items: stretch; flex-direction: column; }
   .audit-pagination .btn { width: 100%; }
 }
+
+/* copy helper beside the exact-value confirmation field */
+.modal-confirm-row {
+  display: flex;
+  align-items: stretch;
+  gap: 7px;
+}
+.modal-confirm-row input {
+  flex: 1 1 180px;
+  min-width: 0;
+}
+.modal-copy-button {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+.modal-copy-status {
+  display: block;
+  min-height: 14px;
+  margin-top: 5px;
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--muted);
+}
+@media (max-width: 480px) {
+  .modal-confirm-row { flex-wrap: wrap; }
+  .modal-copy-button { flex: 1 1 100%; }
+}
