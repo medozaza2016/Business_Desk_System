@@ -2734,3 +2734,18 @@ dialog.scanner::backdrop { background: #14120ee6; }
 @media (max-width: 480px) {
   .quote-row-actions .btn { min-height: 36px; }
 }
+
+
+.audit-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin-top: 14px;
+}
+.audit-pagination .rail-note { margin: 0; }
+
+@media (max-width: 520px) {
+  .audit-pagination { align-items: stretch; flex-direction: column; }
+  .audit-pagination .btn { width: 100%; }
+}
