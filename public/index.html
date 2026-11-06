@@ -475,31 +475,52 @@
       </section>
 
       <section class="panel settings-pane" data-pane="audit" hidden>
-        <div class="card-head">
-          <h2>Audit trail</h2>
-          <span class="chip" id="auditCountChip">—</span>
+        <div class="audit-heading">
+          <div>
+            <p class="eyebrow">Activity history</p>
+            <h2>Audit trail</h2>
+            <p>See what changed, who made the change and which record was affected.</p>
+          </div>
+          <div class="audit-total">
+            <span class="audit-total-value" id="auditCountChip">—</span>
+            <span class="audit-total-label">Events recorded</span>
+          </div>
         </div>
-        <div class="card-body">
-          <p class="rail-note lead">A retained history of changes and destructive actions across the desk. Audit entries are not removed when a company or quotation is permanently deleted.</p>
-          <div class="audit-table-wrap">
-            <table class="audit-table">
-              <thead>
-                <tr>
-                  <th scope="col">Time</th>
-                  <th scope="col">Actor</th>
-                  <th scope="col">Action</th>
-                  <th scope="col">Record</th>
-                  <th scope="col">Details</th>
-                </tr>
-              </thead>
-              <tbody id="auditBody"></tbody>
-            </table>
+
+        <div class="audit-toolbar">
+          <div class="audit-toolbar-copy">
+            <span class="audit-live-dot" aria-hidden="true"></span>
+            <span>Latest activity first</span>
+            <span class="audit-toolbar-divider">·</span>
+            <span>History is retained, including after permanent deletion</span>
           </div>
-          <p class="empty" id="auditEmpty" hidden>No audit events have been recorded yet.</p>
-          <div class="audit-pagination">
-            <span class="rail-note" id="auditRangeNote">Showing recent events</span>
-            <button class="btn ghost small" id="auditLoadMore" type="button" hidden>Load older events</button>
-          </div>
+          <span class="audit-range" id="auditRangeNote">Loading activity…</span>
+        </div>
+
+        <div class="audit-table-wrap">
+          <table class="audit-table">
+            <thead>
+              <tr>
+                <th scope="col">Date and time</th>
+                <th scope="col">User</th>
+                <th scope="col">Activity</th>
+                <th scope="col">Affected record</th>
+                <th scope="col">More</th>
+              </tr>
+            </thead>
+            <tbody id="auditBody"></tbody>
+          </table>
+        </div>
+
+        <div class="audit-empty-state" id="auditEmpty" hidden>
+          <span class="audit-empty-icon" aria-hidden="true">✓</span>
+          <h3>No activity yet</h3>
+          <p>Changes made in Business Desk will appear here.</p>
+        </div>
+
+        <div class="audit-pagination">
+          <span class="audit-pagination-note">Older activity is available below.</span>
+          <button class="btn ghost small" id="auditLoadMore" type="button" hidden>Load older events <span aria-hidden="true">↓</span></button>
         </div>
       </section>
     </div>

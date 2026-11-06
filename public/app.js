@@ -1013,6 +1013,268 @@ async function rotatePasscode(event) {
   }
 }
 
+const AUDIT_ACTIONS = {
+  "auth.setup": ["Workspace set up", "success"],
+  "auth.passcode_rotated": ["Shared passcode changed", "neutral"],
+  "settings.updated": ["Workspace settings updated", "neutral"],
+  "company.created": ["Company created", "success"],
+  "company.updated": ["Company profile updated", "neutral"],
+  "company.deactivated": ["Company deactivated", "warning"],
+  "company.permanently_deleted": ["Company permanently deleted", "danger"],
+  "company.logo_uploaded": ["Company logo uploaded", "success"],
+  "company.logo_removed": ["Company logo removed", "neutral"],
+  "template.saved": ["Quotation template saved", "success"],
+  "template.activated": ["Template activated", "success"],
+  "template.deleted": ["Template deleted", "warning"],
+  "quotation.created": ["Quotation created", "success"],
+  "quotation.updated": ["Quotation updated", "neutral"],
+  "quotation.cancelled": ["Quotation moved to Deleted", "warning"],
+  "quotation.restored": ["Quotation restored", "success"],
+  "quotation.permanently_deleted": ["Quotation permanently deleted", "danger"],
+  "quotation.scan_uploaded": ["Signed document uploaded", "success"],
+  "quotation.scan_removed": ["Signed document removed", "warning"],
+  "quotation.completed": ["Quotation marked completed", "success"],
+  "quotation.reopened": ["Quotation reopened", "neutral"],
+  "quotation.share_link_created": ["Customer link created", "success"],
+  "quotation.share_link_rotated": ["Customer link renewed", "neutral"],
+  "quotation.share_link_revoked": ["Customer link revoked", "warning"],
+};
+
+const AUDIT_FIELD_LABELS = {
+  name: "Company name",
+  legal_name: "Legal name",
+  legal_name_ar: "Arabic legal name",
+  phone: "Phone",
+  email: "Email",
+  address: "Address",
+  quotation_prefix: "Quotation number prefix",
+  currency: "Currency",
+  active: "Active status",
+  quote_number: "Quotation number",
+  quote_date: "Quotation date",
+  model: "Vehicle model",
+  year: "Vehicle year",
+  chassis: "Chassis number",
+  comments: "Comments",
+  amount_cents: "Quotation value",
+  status: "Status",
+  share_mode: "WhatsApp sharing preference",
+};
+
+const auditCompanyName = (companyId) =>
+  state.companies.find((company) => company.id === companyId)?.name || "";
+
+function auditDateParts(value) {
+  const stamp = String(value || "");
+  const normalized = stamp.includes("T") ? stamp : `${stamp.replace(" ", "T")}Z`;
+  const date = new Date(normalized);
+  if (Number.isNaN(date.getTime())) return { date: stamp || "Date unavailable", time: "" };
+  return {
+    date: date.toLocaleDateString(undefined, { day: "2-digit", month: "short", year: "numeric" }),
+    time: date.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" }),
+    iso: date.toISOString(),
+  };
+}
+
+function auditRecordLabel(event) {
+  const details = event.details || {};
+  if (details.quote_number) return `Quotation · ${details.quote_number}`;
+  if (details.name) return `Company · ${details.name}`;
+  if (event.entity === "company") {
+    return `Company · ${auditCompanyName(event.entity_id) || "previously recorded"}`;
+  }
+  if (event.entity === "template") {
+    const company = auditCompanyName(details.company_id);
+    const version = details.version ? `v${details.version}` : "Template";
+    return company ? `${version} · ${company}` : version;
+  }
+  if (event.entity === "settings") return "Business Desk settings";
+  if (event.entity === "quotation") return "Quotation record";
+  return event.entity ? `${event.entity} record` : "Workspace";
+}
+
+function auditActivitySummary(event) {
+  const details = event.details || {};
+  const summaries = [];
+  if (Array.isArray(details.fields) && details.fields.length) {
+    const fields = details.fields.map((field) => AUDIT_FIELD_LABELS[field] || String(field).replaceAll("_", " "));
+    summaries.push(`Updated: ${fields.join(", ")}`);
+  }
+  if (details.name) {
+    summaries.push(event.action === "company.created"
+      ? `Created ${details.name}`
+      : event.action === "company.updated" ? `Updated profile for ${details.name}` : details.name);
+  }
+  if (details.version) summaries.push(`Template version ${details.version}`);
+  if (details.detached_records) summaries.push(`${details.detached_records} quotation snapshot(s) retained`);
+  if (details.quotations_deleted !== undefined) summaries.push(`${details.quotations_deleted} quotation(s) removed`);
+  if (details.templates_deleted !== undefined) summaries.push(`${details.templates_deleted} template(s) removed`);
+  if (details.numbering_sequences_deleted !== undefined) summaries.push(`${details.numbering_sequences_deleted} numbering sequence(s) removed`);
+  if (details.signed_scans_deleted !== undefined) summaries.push(`${details.signed_scans_deleted} signed file(s) removed`);
+  if (details.company_files_deleted !== undefined) summaries.push(`${details.company_files_deleted} company file(s) removed`);
+  if (details.asset_cleanup_failed) summaries.push(`${details.asset_cleanup_failed} file cleanup(s) failed`);
+  if (details.content_type) summaries.push(details.content_type === "application/pdf" ? "PDF document" : "Image document");
+  if (details.bytes) summaries.push(`${(details.bytes / 1024).toFixed(0)} KB`);
+  if (details.source) summaries.push(details.source === "scan" ? "Captured by scanner" : "Uploaded file");
+  if (details.replaced === true) summaries.push("Replaced previous file");
+  if (details.share_mode) summaries.push(details.share_mode === "link" ? "Share by private link" : "Share signed file");
+  if (details.status) summaries.push(`Status: ${details.status}`);
+  if (details.amount_cents !== undefined && Number.isFinite(Number(details.amount_cents))) {
+    const company = state.companies.find((item) => item.id === details.company_id);
+    const currency = company?.currency || "Value";
+    const amount = (Number(details.amount_cents) / 100).toLocaleString(undefined, {
+      minimumFractionDigits: 2, maximumFractionDigits: 2,
+    });
+    summaries.push(`${currency} ${amount}`);
+  }
+  if (details.active !== undefined) summaries.push(details.active ? "Set as active" : "Saved as inactive");
+  if (details.slug) summaries.push(`Reference: ${details.slug}`);
+  if (details.audit_events_retained) summaries.push("Audit history retained");
+  if (details.signed_scan_deleted !== undefined) summaries.push(details.signed_scan_deleted ? "Signed document removed" : "No signed document attached");
+  return summaries.length ? summaries.join(" · ") : "Activity recorded";
+}
+
+function auditDetailValue(key, value) {
+  if (value === null || value === undefined || value === "") return "—";
+  if (key === "fields" && Array.isArray(value)) {
+    return value.map((field) => AUDIT_FIELD_LABELS[field] || String(field).replaceAll("_", " ")).join(", ");
+  }
+  if (key === "amount_cents" && Number.isFinite(Number(value))) {
+    return `${(Number(value) / 100).toFixed(2)} (stored in minor currency units)`;
+  }
+  if (typeof value === "boolean") return value ? "Yes" : "No";
+  if (Array.isArray(value)) return value.map((item) => String(item)).join(", ");
+  if (typeof value === "object") return JSON.stringify(value);
+  return String(value);
+}
+
+function auditDetailLabel(key) {
+  const labels = {
+    company_id: "Company reference",
+    quote_number: "Quotation number",
+    previous_quote_number: "Previous quotation number",
+    name: "Company name",
+    slug: "Company reference",
+    fields: "Updated fields",
+    version: "Template version",
+    active: "Published as active",
+    detached_records: "Quotations retaining old template",
+    quotations_deleted: "Quotations removed",
+    templates_deleted: "Templates removed",
+    numbering_sequences_deleted: "Numbering sequences removed",
+    signed_scans_deleted: "Signed documents removed",
+    company_files_deleted: "Company files removed",
+    audit_events_retained: "Audit history retained",
+    asset_cleanup_failed: "File cleanup failures",
+    asset_cleanup_failed_keys: "Files needing cleanup",
+    asset_cleanup_failed_key: "File needing cleanup",
+    signed_scan_deleted: "Signed document removed",
+    content_type: "File type",
+    bytes: "File size (bytes)",
+    replaced: "Replaced previous file",
+    source: "Upload method",
+    share_mode: "Sharing preference",
+    status: "Quotation status",
+    amount_cents: "Quotation value",
+    permanent: "Permanent deletion",
+    seeded_company: "Initial company reference",
+    type: "Logo file type",
+  };
+  return labels[key] || key.replaceAll("_", " ").replace(/^./, (letter) => letter.toUpperCase());
+}
+
+function renderAuditEvent(event) {
+  const details = event.details || {};
+  const [activity, tone] = AUDIT_ACTIONS[event.action] || [
+    String(event.action || "Activity recorded").replaceAll(".", " ").replaceAll("_", " ").replace(/^./, (letter) => letter.toUpperCase()),
+    "neutral",
+  ];
+  const date = auditDateParts(event.created_at);
+  const row = document.createElement("tr");
+  row.className = `audit-row audit-row-${tone}`;
+
+  const timeCell = document.createElement("td");
+  timeCell.className = "audit-time-cell";
+  timeCell.dataset.label = "Date and time";
+  const timeDate = document.createElement("span");
+  timeDate.className = "audit-date";
+  timeDate.textContent = date.date;
+  const timeClock = document.createElement("span");
+  timeClock.className = "audit-clock";
+  timeClock.textContent = date.time;
+  timeCell.append(timeDate, timeClock);
+  if (date.iso) {
+    const time = document.createElement("time");
+    time.dateTime = date.iso;
+    time.hidden = true;
+    timeCell.append(time);
+  }
+
+  const actorCell = document.createElement("td");
+  const actor = document.createElement("span");
+  actor.className = "audit-actor";
+  actor.textContent = event.actor && event.actor !== "shared" && event.actor !== "Shared user"
+    ? event.actor
+    : "Shared user";
+  actorCell.dataset.label = "User";
+  actorCell.append(actor);
+
+  const activityCell = document.createElement("td");
+  const badge = document.createElement("span");
+  badge.className = `audit-activity-badge audit-tone-${tone}`;
+  badge.textContent = activity;
+  const summary = document.createElement("span");
+  summary.className = "audit-summary";
+  summary.textContent = auditActivitySummary(event);
+  activityCell.dataset.label = "Activity";
+  activityCell.append(badge, summary);
+
+  const recordCell = document.createElement("td");
+  const record = document.createElement("span");
+  record.className = "audit-record";
+  record.textContent = auditRecordLabel(event);
+  recordCell.dataset.label = "Affected record";
+  recordCell.append(record);
+  const companyContext = auditCompanyName(details.company_id);
+  if (companyContext) {
+    const context = document.createElement("span");
+    context.className = "audit-record-context";
+    context.textContent = companyContext;
+    recordCell.append(context);
+  }
+
+  const detailsCell = document.createElement("td");
+  detailsCell.className = "audit-more-cell";
+  detailsCell.dataset.label = "More";
+  const detailsPanel = document.createElement("details");
+  detailsPanel.className = "audit-more";
+  const detailsToggle = document.createElement("summary");
+  detailsToggle.textContent = "View details";
+  detailsPanel.append(detailsToggle);
+  const detailList = document.createElement("dl");
+  detailList.className = "audit-detail-list";
+  const entries = Object.entries(details);
+  if (entries.length) {
+    for (const [key, value] of entries) {
+      const term = document.createElement("dt");
+      term.textContent = auditDetailLabel(key);
+      const description = document.createElement("dd");
+      description.textContent = auditDetailValue(key, value);
+      detailList.append(term, description);
+    }
+  } else {
+    const empty = document.createElement("p");
+    empty.className = "audit-detail-empty";
+    empty.textContent = "No additional details for this activity.";
+    detailsPanel.append(empty);
+  }
+  detailsPanel.append(detailList);
+  detailsCell.append(detailsPanel);
+
+  row.append(timeCell, actorCell, activityCell, recordCell, detailsCell);
+  return row;
+}
+
 async function loadAuditTrail({ append = false } = {}) {
   if (state.auditLoading) return;
   const body = $("auditBody");
@@ -1030,42 +1292,22 @@ async function loadAuditTrail({ append = false } = {}) {
   try {
     const data = await api(`/api/audit?limit=${limit}&offset=${offset}`);
     const events = data.events || [];
-    $("auditCountChip").textContent = `${data.total} events`;
-    $("navAuditSummary").textContent = `${data.total} events`;
-    for (const event of events) {
-      const row = document.createElement("tr");
-      const stamp = String(event.created_at || "");
-      const normalizedStamp = stamp.includes("T") ? stamp : `${stamp.replace(" ", "T")}Z`;
-      const when = new Date(normalizedStamp);
-      const record = event.details?.quote_number || event.details?.name || event.entity_id || "—";
-      const values = [
-        Number.isNaN(when.getTime()) ? stamp : when.toLocaleString(),
-        event.actor || "shared",
-        event.action || "—",
-        `${event.entity || "record"} · ${record}`,
-        JSON.stringify(event.details || {}),
-      ];
-      for (const [index, value] of values.entries()) {
-        const cell = document.createElement("td");
-        cell.textContent = String(value);
-        if (index === 4) cell.className = "audit-details";
-        if (index === 0) cell.className = "audit-time";
-        row.appendChild(cell);
-      }
-      body.appendChild(row);
-    }
+    $("auditCountChip").textContent = Number(data.total || 0).toLocaleString();
+    $("navAuditSummary").textContent = Number(data.total || 0).toLocaleString() + " events";
+    for (const event of events) body.append(renderAuditEvent(event));
     state.auditOffset = offset + events.length;
     $("auditEmpty").hidden = data.total > 0;
     const showing = Math.min(state.auditOffset, data.total);
     $("auditRangeNote").textContent = data.total
-      ? `Showing ${showing} of ${data.total} events`
-      : "No recorded activity";
+      ? `Showing ${showing.toLocaleString()} of ${Number(data.total).toLocaleString()} events`
+      : "No activity to show";
     button.hidden = state.auditOffset >= data.total;
   } catch (error) {
     if (!append) {
-      $("auditCountChip").textContent = "unavailable";
+      $("auditCountChip").textContent = "Unavailable";
       $("auditEmpty").hidden = false;
-      $("auditEmpty").textContent = humanError(error);
+      $("auditEmpty").querySelector("h3").textContent = "Audit history unavailable";
+      $("auditEmpty").querySelector("p").textContent = humanError(error);
     } else {
       toast(humanError(error), "error");
     }
