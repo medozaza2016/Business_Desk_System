@@ -21,6 +21,11 @@ const escapeHtml = (value) =>
  * and print it from there" was a detour for a customer holding a phone. It is a
  * fixed string on purpose — index.js hashes it into the CSP, so the response needs
  * no per-request nonce and the page stays script-free apart from this handler.
+ *
+ * It is only wired to pages whose signed copy is a picture. window.print() prints
+ * the HTML document in front of it, so on a PDF page it would print the figures and
+ * leave the signed page out; there the Print control is a plain link to the file and
+ * the viewer does the printing (see the actions block below).
  */
 export const SHARE_PRINT_SCRIPT =
   "document.addEventListener('click',function(e){var b=e.target.closest('[data-print]');if(!b)return;e.preventDefault();window.print();});";
@@ -81,6 +86,9 @@ body {
 .btn.ghost { background: transparent; border-color: var(--line); color: var(--ink-soft); }
 a.btn, button.btn { cursor: pointer; }
 button.btn { font-family: inherit; }
+/* a PDF opens in the browser's own reader, so the print button is a hand-off — say so */
+.actions-hint { flex: 1 1 100%; margin: 0; font-family: var(--mono); font-size: 9.5px;
+  letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
 /* a PDF cannot be shown as a picture, so it is shown as what it is: one document */
 .scan-doc { display: flex; align-items: center; gap: 13px; margin: 14px 22px 0; padding: 15px;
   border: 1px solid var(--line); background: #fbfaf7; color: var(--ink); text-decoration: none; }
@@ -213,7 +221,12 @@ export function renderSharePage({ quotation, company, scan, links }) {
   </div>`}
   <div class="actions">
     <a class="btn primary" href="${escapeHtml(links.download)}" download>Download the ${isPdf ? "PDF" : "picture"}</a>
-    <button class="btn ghost" type="button" data-print>Print</button>
+    ${isPdf
+      /* the signed page is a PDF: only its own viewer can put it on paper, so Print
+         hands the file over instead of printing this summary and calling it done */
+      ? `<a class="btn ghost" href="${escapeHtml(links.image)}" target="_blank" rel="noopener">Print the PDF</a>
+    <p class="actions-hint">The PDF opens in your reader — print it from there</p>`
+      : `<button class="btn ghost" type="button" data-print>Print</button>`}
   </div>`
     : `<p class="note">The signed copy is not on file yet — ask the desk to scan the page the customer signed.</p>
   <div class="actions">

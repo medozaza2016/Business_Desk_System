@@ -104,8 +104,10 @@ A4 sheet. Replace it with the real artwork (A4 @ 150–300 dpi, header/footer al
   token sees it, which is the point; the passcode only guards the desk itself and `/quote?id=…`.
 - The share page carries `noindex` and `no-referrer`, so it never turns up in a search result and never
   leaks the desk's own URL to the customer's browser.
-- *Print* on that page prints the page: the figures on one A4 sheet, the signed copy on the next. There is
-  no separate sheet route to open, so nothing on the customer's screen needs a session.
+- *Print* on that page: with a scanned picture the page prints itself — the figures on one A4 sheet, the
+  signed copy on the next, no separate sheet route and nothing on the customer's screen needs a session.
+  With a PDF signed copy the button is a link to the file, because a page cannot lay out a PDF; the viewer
+  puts the customer's actual document on paper.
 - WhatsApp is opened, never driven: the desk hands the file or the link to the operating system's share
   sheet (mobile) or to `wa.me` plus a download (desktop). Nothing is sent without the operator picking a
   chat, and no WhatsApp credentials are stored anywhere.

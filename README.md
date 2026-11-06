@@ -99,6 +99,8 @@ docs/                             API, templates, operations, PRD
 
 ```bash
 npm run test:scan            # scanner geometry (detect, homography, warp, lighting)
+npm run test:share           # the three shapes of the public share page
+npm test                     # both
 npm run typecheck            # tsc over the Worker and the client modules
 ```
 

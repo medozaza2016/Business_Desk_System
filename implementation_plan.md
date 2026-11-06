@@ -46,7 +46,9 @@ so the decisions and their reasons stay next to the code.
 - Public: `GET /s/<token>` (`src/share-page.js`, one inline-styled HTML document with `og:` tags,
   `noindex`, `no-referrer`, tight CSP) and `/s/<token>/scan`. The page’s Print button is the only
   script, pinned by CSP hash (`SHARE_PRINT_SCRIPT`); the old `/s/<token>/sheet` route is gone —
-  the customer prints the page itself.
+  a picture signed copy is printed by the page itself. A PDF signed copy gets a plain link instead of
+  the script (`Print the PDF` → `/s/<token>/scan`, inline), because `window.print()` prints the HTML
+  in front of it and would leave the signed page out.
 - Settings: `GET`/`PATCH /api/settings` with `share_mode ∈ {file, link}`.
 - Ledger: `ORDER BY q.quote_number DESC` by default, `?sort=date` for the old order; the scan is joined
   once per page so `has_scan` needs no second round-trip. CSV follows the number order.
@@ -73,7 +75,10 @@ so the decisions and their reasons stay next to the code.
 
 ## Verification performed
 
-- `npm run test:scan` — 10 geometry tests (detection, ordering, homography, warp, lighting).
+- `npm run test:scan` — 17 geometry tests (detection, ordering, homography, warp, lighting, the two
+  finishes).
+- `npm run test:share` — 5 render tests: a picture page prints itself, a PDF page hands the printing to
+  the file, a quotation without a signed copy says so, one hashed script per page.
 - `npm run typecheck` — Worker + client.
 - Backend smoke over a scratch D1 (`--persist-to /tmp/qtest`): setup → create → list order/flags →
   scan upload (accept PNG, reject text) → byte serving with/without `download` → share page, scan, sheet,

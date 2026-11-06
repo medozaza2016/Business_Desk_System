@@ -81,8 +81,12 @@ only script is the Print button, allowed through a `sha256` CSP hash.
   `quotations.share_token`; the raw value never appears in an `/api/` payload (only `share_path`).
 - Responses carry `x-robots-tag: noindex, nofollow, noarchive`, `referrer-policy: no-referrer` and
   `content-security-policy: default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; script-src 'sha256-…'; …`.
-- *Print* calls `window.print()` on the page itself: the `@media print` styles drop every control and start
-  the signed copy on its own A4 sheet, so a customer holding a phone gets paper without a second tab.
+- *Print* has two shapes, because paper does not come out of an HTML page for free:
+  - a picture signed copy prints the page itself — `window.print()` plus `@media print` styles that drop every
+    control and start the signed copy on its own A4 sheet;
+  - a PDF signed copy gets a **link** instead of the script (`Print the PDF` → `/s/<token>/scan`), because
+    `window.print()` would print the figures and leave the signed page behind. The file opens in the
+    browser's viewer, which prints the real document — page count, size and all.
 - `og:` tags are emitted for the quotation number, the vehicle and the scan, so a WhatsApp preview shows
   the paperwork bubble rather than a bare URL. A PDF signed copy has no `og:image` (a PDF is not an image);
   the page shows it as a document tile with its size and a tap-through link.
