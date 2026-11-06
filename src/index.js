@@ -560,16 +560,20 @@ const handleCompanyPatch = async (request, env, ctx, session, companyId) => {
   if (!sets.length) return json({ error: "no_fields_to_update" }, 400);
   await env.DB.prepare(`UPDATE companies SET ${sets.join(", ")}, updated_at=CURRENT_TIMESTAMP WHERE id=?`)
     .bind(...values, companyId).run();
-  audit(env, ctx, session.name, "company.updated", "company", companyId, { fields: sets.map((s) => s.replace("=?", "")) });
   const row = await env.DB.prepare(`SELECT ${COMPANY_COLUMNS} FROM companies WHERE id=?`).bind(companyId).first();
+  audit(env, ctx, session.name, "company.updated", "company", companyId, {
+    name: row?.name || "",
+    fields: sets.map((s) => s.replace("=?", "")),
+  });
   return json({ company: withLogoUrl(row) });
 };
 
 const handleCompanyDeactivate = async (env, ctx, session, companyId) => {
-  const result = await env.DB.prepare("UPDATE companies SET active=0, updated_at=CURRENT_TIMESTAMP WHERE id=?")
+  const company = await env.DB.prepare("SELECT name FROM companies WHERE id=?").bind(companyId).first();
+  if (!company) return json({ error: "company_not_found" }, 404);
+  await env.DB.prepare("UPDATE companies SET active=0, updated_at=CURRENT_TIMESTAMP WHERE id=?")
     .bind(companyId).run();
-  if (!result.meta || result.meta.changes === 0) return json({ error: "company_not_found" }, 404);
-  audit(env, ctx, session.name, "company.deactivated", "company", companyId, {});
+  audit(env, ctx, session.name, "company.deactivated", "company", companyId, { name: company.name });
   return json({ deactivated: true });
 };
 
@@ -1151,7 +1155,13 @@ const handleQuotationPatch = async (request, env, ctx, session, id) => {
   } catch {
     return json({ error: "quotation_number_already_exists" }, 409);
   }
-  audit(env, ctx, session.name, "quotation.updated", "quotation", id, { fields: sets.map((s) => s.replace("=?", "")) });
+  audit(env, ctx, session.name, "quotation.updated", "quotation", id, {
+    quote_number: sets.some((s) => s.startsWith("quote_number="))
+      ? values[sets.findIndex((s) => s.startsWith("quote_number="))]
+      : row.quote_number,
+    company_id: row.company_id,
+    fields: sets.map((s) => s.replace("=?", "")),
+  });
   return handleQuotationGet(env, id);
 };
 
@@ -1373,6 +1383,8 @@ const handleQuotationScanUpload = async (request, env, ctx, session, id) => {
     try { await env.ASSETS.delete(previous.r2_key); } catch { /* the new copy is already live */ }
   }
   audit(env, ctx, session.name, "quotation.scan_uploaded", "quotation", id, {
+    quote_number: row.quote_number,
+    company_id: row.company_id,
     content_type: type.mime, bytes: bytes.length, replaced: Boolean(previous), source,
   });
   return json(await quotationPayload(env, id), previous ? 200 : 201);
@@ -1387,7 +1399,9 @@ const handleQuotationScanDelete = async (env, ctx, session, id) => {
   if (env.ASSETS) {
     try { await env.ASSETS.delete(scan.r2_key); } catch { /* the row is already clear */ }
   }
-  audit(env, ctx, session.name, "quotation.scan_removed", "quotation", id, {});
+  audit(env, ctx, session.name, "quotation.scan_removed", "quotation", id, {
+    quote_number: row.quote_number, company_id: row.company_id,
+  });
   return json({ removed: true });
 };
 
@@ -1411,7 +1425,9 @@ const handleQuotationStatus = async (request, env, ctx, session, id) => {
     "UPDATE quotations SET status=?, completed_at=?, updated_at=CURRENT_TIMESTAMP WHERE id=?"
   ).bind(body.status, body.status === "completed" ? new Date().toISOString() : null, id).run();
   audit(env, ctx, session.name,
-    body.status === "completed" ? "quotation.completed" : "quotation.reopened", "quotation", id, {});
+    body.status === "completed" ? "quotation.completed" : "quotation.reopened", "quotation", id, {
+      quote_number: row.quote_number, company_id: row.company_id, status: body.status,
+    });
   return handleQuotationGet(env, id);
 };
 
@@ -1424,7 +1440,9 @@ const handleShareLinkCreate = async (request, env, ctx, session, id) => {
     "UPDATE quotations SET share_token=?, share_token_created_at=CURRENT_TIMESTAMP, updated_at=CURRENT_TIMESTAMP WHERE id=?"
   ).bind(token, id).run();
   audit(env, ctx, session.name,
-    row.share_token ? "quotation.share_link_rotated" : "quotation.share_link_created", "quotation", id, {});
+    row.share_token ? "quotation.share_link_rotated" : "quotation.share_link_created", "quotation", id, {
+      quote_number: row.quote_number, company_id: row.company_id,
+    });
   return json({
     share_path: sharePath(token),
     share_url: shareUrlFor(request, token),
@@ -1438,7 +1456,9 @@ const handleShareLinkRevoke = async (env, ctx, session, id) => {
   await env.DB.prepare(
     "UPDATE quotations SET share_token=NULL, share_token_created_at=NULL, updated_at=CURRENT_TIMESTAMP WHERE id=?"
   ).bind(id).run();
-  audit(env, ctx, session.name, "quotation.share_link_revoked", "quotation", id, {});
+  audit(env, ctx, session.name, "quotation.share_link_revoked", "quotation", id, {
+    quote_number: row.quote_number, company_id: row.company_id,
+  });
   return json({ share_path: null, share_url: null, share_token_created_at: null });
 };
 
