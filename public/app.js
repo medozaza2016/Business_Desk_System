@@ -1119,6 +1119,14 @@ function auditActivitySummary(event) {
   if (details.replaced === true) summaries.push("Replaced previous file");
   if (details.share_mode) summaries.push(details.share_mode === "link" ? "Share by private link" : "Share signed file");
   if (details.status) summaries.push(`Status: ${details.status}`);
+  if (details.amount_cents !== undefined && Number.isFinite(Number(details.amount_cents))) {
+    const company = state.companies.find((item) => item.id === details.company_id);
+    const currency = company?.currency || "Value";
+    const amount = (Number(details.amount_cents) / 100).toLocaleString(undefined, {
+      minimumFractionDigits: 2, maximumFractionDigits: 2,
+    });
+    summaries.push(`${currency} ${amount}`);
+  }
   if (details.active !== undefined) summaries.push(details.active ? "Set as active" : "Saved as inactive");
   if (details.slug) summaries.push(`Reference: ${details.slug}`);
   if (details.audit_events_retained) summaries.push("Audit history retained");
@@ -1227,6 +1235,13 @@ function renderAuditEvent(event) {
   record.textContent = auditRecordLabel(event);
   recordCell.dataset.label = "Affected record";
   recordCell.append(record);
+  const companyContext = auditCompanyName(details.company_id);
+  if (companyContext) {
+    const context = document.createElement("span");
+    context.className = "audit-record-context";
+    context.textContent = companyContext;
+    recordCell.append(context);
+  }
 
   const detailsCell = document.createElement("td");
   detailsCell.className = "audit-more-cell";
