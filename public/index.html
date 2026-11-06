@@ -52,10 +52,12 @@
       </div>
       <form id="quoteForm" novalidate>
         <label class="field">
-          <span class="field-label">Quotation no. <em id="numberHint">auto</em></span>
-          <span class="prefix">
-            <span class="prefix-tag" id="prefixTag">QA-</span>
-            <input id="quoteNumber" name="quote_number" maxlength="60" autocomplete="off" spellcheck="false" placeholder="2026-00001">
+          <span class="field-label">Quotation no. <em id="numberHint">auto · generating number…</em></span>
+          <span class="prefix read-only-number" aria-label="Automatically generated quotation number">
+            <span class="prefix-tag" aria-hidden="true">AUTO</span>
+            <input id="quoteNumber" type="text" maxlength="60" autocomplete="off" spellcheck="false"
+              placeholder="Generating quotation number…" readonly aria-readonly="true"
+              title="Generated automatically by the server. This field cannot be edited.">
           </span>
         </label>
         <label class="field"><span class="field-label">Date</span><input id="quoteDate" type="date" required></label>
