@@ -3,7 +3,7 @@
 Multi-company quotation desk for Challenger Cars: issue bilingual (English/Arabic) A4 valuation
 quotations, keep an immutable record of every sheet, and print or save to PDF from the browser.
 
-Live: <https://quote.ahmedmohamed.org>
+Live: <https://desk.luxoritpro.com>
 
 ## Stack
 

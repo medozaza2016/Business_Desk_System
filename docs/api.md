@@ -1,6 +1,6 @@
 # HTTP API
 
-Base URL: `https://quote.ahmedmohamed.org`. All responses are JSON except the print sheet (HTML) and the
+Base URL: `https://desk.luxoritpro.com`. All responses are JSON except the print sheet (HTML) and the
 CSV export. Every protected route requires the `q_session` cookie set by `POST /api/setup` or
 `POST /api/auth/login`.
 
@@ -165,7 +165,7 @@ page uses it as the default for each send and lets the operator override it ther
 ### Example session
 
 ```bash
-BASE=https://quote.ahmedmohamed.org
+BASE=https://desk.luxoritpro.com
 curl -s -c jar.txt -X POST "$BASE/api/setup" \
   -H 'content-type: application/json' -d '{"passcode":"team-passcode","name":"Ahmed"}'
 

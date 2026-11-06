@@ -4,7 +4,7 @@
 
 | Piece | Resource | Notes |
 |---|---|---|
-| Worker | `challenger-quotation-platform` | API + print rendering, custom domain `quote.ahmedmohamed.org` |
+| Worker | `challenger-quotation-platform` | API + print rendering, custom domain `desk.luxoritpro.com` |
 | Static UI | Workers Assets (`env.STATIC`, `./public`) | `index.html`, `quote.html`, `app.css`, `app.js`, `quote.js`, letterhead |
 | Database | D1 `challenger-quotation-db` (`f8919c6e-a35e-4aa7-8178-dfb11e9303cf`) | 6 tables: `companies`, `templates`, `quote_sequences`, `quotations`, `settings`, `audit_events` |
 | Objects | R2 `challenger-quotation-assets` (`env.ASSETS`) | Reserved for per-company artwork; unused in this phase |
@@ -12,6 +12,26 @@
 
 `[observability] enabled = true` is set in `wrangler.toml`, so `console.*` output and request logs are
 visible in **Workers → challenger-quotation-platform → Logs**.
+
+## Public hostname and Cloudflare Access
+
+`desk.luxoritpro.com` is a **Workers custom domain** on the `luxoritpro.com` zone (AAAA `100::`,
+proxied). `challenger-quotation-platform.wandering-limit-7df8.workers.dev` still answers, but the
+custom domain is the desk's real address.
+
+That zone puts a wildcard Access application — *supadock nodes (`*.luxoritpro.com`)* — in front of
+every subdomain, and it only admits `@ahmedmohamed.org` identities. The desk cannot live behind it:
+the shared passcode **is** the gate here, and `/s/<token>` customer links have to open for someone
+with no identity at all. So `desk.luxoritpro.com` carries its own, more specific Access application,
+*Challenger Quotation Desk* (`70c599f6-530d-4bd2-89a3-62938444403e`), whose only policy is
+**Bypass · Include everyone**. Access selects the most specific application, so the desk stays open
+while `nas`, `pve1`, `vault`, `hub`, `remote`, `idrac01/02` and the rest stay behind SSO.
+
+Symptom when that application is missing: every request — `/`, `/api/…`, `/s/…` — answers
+`302 → https://luxoritpro.cloudflareaccess.com/cdn-cgi/access/login/desk.luxoritpro.com?…`.
+Compare the `aud` inside that redirect with the wildcard app's `aud` to see which application is
+intercepting. A child application that has no policies of its own inherits the parent's, so any
+future `desk.*` application must always carry an explicit policy.
 
 ## Routine commands
 
@@ -29,7 +49,7 @@ default answer, which is "yes".
 
 ## First-run procedure
 
-1. Open `https://quote.ahmedmohamed.org`.
+1. Open `https://desk.luxoritpro.com`.
 2. The desk asks for a passcode because `POST /api/setup` has never been called (`setup:false`).
 3. Enter the shared passcode (6+ characters). This:
    - stores `PBKDF2-SHA256(passcode, salt, 100000)` in `settings.auth_passcode`,
