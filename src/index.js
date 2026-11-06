@@ -66,6 +66,14 @@ const MAX_AGREEMENT_NOTES = 600;
 const AGREEMENT_SCAN_PREFIX = "scans/agreements/";
 const TEMPLATE_KINDS = ["quotation", ...AGREEMENT_KINDS];
 
+/** Human label for a sheet kind: "Quotation", "Sale agreement", "Purchase agreement". */
+const templateKindLabel = (kind) =>
+  kind === "quotation" ? "Quotation" : `${AGREEMENT_KIND_LABELS[kind] || "Vehicle"} agreement`;
+
+/** The bundled sheet for a kind - what prints until the company publishes its own. */
+const builtinSheet = (kind) =>
+  kind === "quotation" ? DEFAULT_TEMPLATE : DEFAULT_AGREEMENT_TEMPLATES[kind] || DEFAULT_SALES_AGREEMENT;
+
 /* A template may print {{logo_url}} even when the company has no logo. Pointing at a
    1x1 transparent GIF keeps the sheet clean instead of showing a broken-image icon. */
 const TRANSPARENT_PIXEL = "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
@@ -900,14 +908,27 @@ const templateKindOf = (value) => {
   return TEMPLATE_KINDS.includes(kind) ? kind : "quotation";
 };
 
-/* The settings studio only ever lists quotation templates; agreement templates are
-   published through the API and are reached by kind. */
-const handleTemplateList = async (env, companyId, kind = "quotation") => {
+/* The settings studio lists one kind at a time: quotation, sale agreement or purchase
+   agreement. Versions, live flags and numbering are per kind. */
+const handleTemplateList = async (env, companyId, url) => {
+  const kind = templateKindOf(url?.searchParams?.get("kind"));
   const rows = await env.DB.prepare(
     "SELECT id,name,kind,version,active,created_at,length(html) AS bytes FROM templates " +
     "WHERE company_id=? AND kind=? ORDER BY version DESC"
-  ).bind(companyId, templateKindOf(kind)).all();
-  return json({ templates: rows.results || [] });
+  ).bind(companyId, kind).all();
+  return json({ kind, templates: rows.results ?? [] });
+};
+
+/**
+ * The sheet that is bundled for a kind - what prints until the company publishes its
+ * own. The studio loads it into the editor so an agreement sheet can be started from
+ * the built-in page instead of a blank textarea.
+ */
+const handleTemplateDefault = async (env, companyId, url) => {
+  const company = await env.DB.prepare("SELECT id FROM companies WHERE id=?").bind(companyId).first();
+  if (!company) return json({ error: "company_not_found" }, 404);
+  const kind = templateKindOf(url?.searchParams?.get("kind"));
+  return json({ kind, html: builtinSheet(kind), label: templateKindLabel(kind) });
 };
 
 const handleTemplateGet = async (env, companyId, templateId) => {
@@ -972,7 +993,38 @@ const companyRow = async (env, companyId) =>
  * so the settings preview cannot drift from the printed sheet. Uses sample data and the
  * next live number - nothing is written and no serial is burned.
  */
-const renderTemplatePreview = async (env, company, html) => {
+const renderTemplatePreview = async (env, company, html, kind = "quotation") =>
+  kind === "quotation"
+    ? renderQuotationTemplatePreview(env, company, html)
+    : renderAgreementTemplatePreview(env, company, html, kind);
+
+/** The company block a preview stamps on the sheet - the keys a create-time snapshot holds. */
+const previewCompanySnapshot = (company) => JSON.stringify({
+  name: company.name,
+  legal_name: company.legal_name,
+  legal_name_ar: company.legal_name_ar,
+  address: company.address,
+  phone: company.phone,
+  email: company.email,
+  currency: company.currency,
+  letterhead_url: LETTERHEAD_URL,
+  logo_url: logoUrlFor(company),
+});
+
+/** Sample parties used to proof an agreement sheet before it goes live. */
+const PREVIEW_AGREEMENT = {
+  plate: "A 48213", color: "Ibis white", odometer: "86,400 km", registration_place: "Dubai",
+  seller_name: "Gulf Motors Trading LLC", seller_id_number: "1054721",
+  seller_phone: "+971 50 123 4567", seller_address: "Al Quoz 1, Dubai",
+  buyer_name: "Sunrise Trading LLC", buyer_id_number: "8842130",
+  buyer_phone: "+971 55 765 4321", buyer_address: "Deira, Dubai",
+  intermediary_name: "Challenger Motors LLC", intermediary_phone: "+971 4 000 1111",
+  intermediary_commission: "AED 2,000 from the seller",
+  full_cents: 18500000, paid_cents: 2500000,
+  notes: "Sold as seen, two keys, service book included.",
+};
+
+const renderQuotationTemplatePreview = async (env, company, html) => {
   const next = await peekNextNumber(env, company, todayIso());
   const row = {
     quote_number: next.quote_number,
@@ -984,21 +1036,64 @@ const renderTemplatePreview = async (env, company, html) => {
     amount_cents: PREVIEW_SAMPLE.cents,
     amount_words: amountWordsFromCents(PREVIEW_SAMPLE.cents),
     company_name: company.name,
-    company_snapshot_json: JSON.stringify({
-      name: company.name,
-      legal_name: company.legal_name,
-      legal_name_ar: company.legal_name_ar,
-      address: company.address,
-      phone: company.phone,
-      email: company.email,
-      currency: company.currency,
-      letterhead_url: LETTERHEAD_URL,
-      logo_url: logoUrlFor(company),
-    }),
+    company_snapshot_json: previewCompanySnapshot(company),
   };
   return {
+    kind: "quotation",
     html: renderQuote(html || DEFAULT_TEMPLATE, buildPrintFields(row)),
     sample: { quote_number: next.quote_number, date: row.quote_date, amount_cents: row.amount_cents },
+  };
+};
+
+/**
+ * Agreement sheets print their own tokens (parties, plate, three money figures), so a
+ * quotation sample would leave them blank. Same mapping as /print, sample parties, and
+ * the kind's next number - still nothing written and no serial burned.
+ */
+const renderAgreementTemplatePreview = async (env, company, html, kind) => {
+  const next = await peekNextAgreementNumber(env, company.id, kind, todayIso());
+  const row = {
+    kind,
+    agreement_number: next.agreement_number,
+    agreement_date: todayIso(),
+    vehicle_model: PREVIEW_SAMPLE.model,
+    vehicle_year: PREVIEW_SAMPLE.year,
+    vehicle_chassis: PREVIEW_SAMPLE.chassis,
+    vehicle_plate: PREVIEW_AGREEMENT.plate,
+    vehicle_color: PREVIEW_AGREEMENT.color,
+    vehicle_odometer: PREVIEW_AGREEMENT.odometer,
+    vehicle_registration_place: PREVIEW_AGREEMENT.registration_place,
+    seller_name: PREVIEW_AGREEMENT.seller_name,
+    seller_id_number: PREVIEW_AGREEMENT.seller_id_number,
+    seller_phone: PREVIEW_AGREEMENT.seller_phone,
+    seller_address: PREVIEW_AGREEMENT.seller_address,
+    buyer_name: PREVIEW_AGREEMENT.buyer_name,
+    buyer_id_number: PREVIEW_AGREEMENT.buyer_id_number,
+    buyer_phone: PREVIEW_AGREEMENT.buyer_phone,
+    buyer_address: PREVIEW_AGREEMENT.buyer_address,
+    intermediary_name: PREVIEW_AGREEMENT.intermediary_name,
+    intermediary_phone: PREVIEW_AGREEMENT.intermediary_phone,
+    intermediary_commission: PREVIEW_AGREEMENT.intermediary_commission,
+    /* the same note the worksheet's sample vehicle carries, so notes_state can be proofed */
+    notes: PREVIEW_AGREEMENT.notes,
+    full_amount_cents: PREVIEW_AGREEMENT.full_cents,
+    full_amount_words: amountWordsFromCents(PREVIEW_AGREEMENT.full_cents),
+    paid_amount_cents: PREVIEW_AGREEMENT.paid_cents,
+    paid_amount_words: amountWordsFromCents(PREVIEW_AGREEMENT.paid_cents),
+    company_name: company.name,
+    company_snapshot_json: previewCompanySnapshot(company),
+  };
+  return {
+    kind,
+    html: renderQuote(html || builtinSheet(kind), buildAgreementPrintFields(row)),
+    sample: {
+      agreement_number: next.agreement_number,
+      kind,
+      kind_label: templateKindLabel(kind),
+      date: row.agreement_date,
+      full_amount_cents: row.full_amount_cents,
+      paid_amount_cents: row.paid_amount_cents,
+    },
   };
 };
 
@@ -1010,17 +1105,18 @@ const handleTemplatePreviewDraft = async (request, env, companyId) => {
   if (html.length > MAX_TEMPLATE_BYTES) return json({ error: "template_too_large" }, 413);
   const company = await companyRow(env, companyId);
   if (!company) return json({ error: "company_not_found" }, 404);
-  return json(await renderTemplatePreview(env, company, html));
+  /* the kind picks the sample record and the token set the draft is proofed against */
+  return json(await renderTemplatePreview(env, company, html, templateKindOf(body?.kind)));
 };
 
 /** Preview for a stored version. */
 const handleTemplatePreviewVersion = async (env, companyId, templateId) => {
-  const row = await env.DB.prepare("SELECT html FROM templates WHERE id=? AND company_id=?")
+  const row = await env.DB.prepare("SELECT html,kind FROM templates WHERE id=? AND company_id=?")
     .bind(templateId, companyId).first();
   if (!row) return json({ error: "template_not_found" }, 404);
   const company = await companyRow(env, companyId);
   if (!company) return json({ error: "company_not_found" }, 404);
-  return json(await renderTemplatePreview(env, company, row.html));
+  return json(await renderTemplatePreview(env, company, row.html, templateKindOf(row.kind)));
 };
 
 /**
@@ -2693,8 +2789,11 @@ async function route(request, env, ctx, url) {
       if (method === "DELETE") return handleCompanyLogoDelete(env, ctx, session, id);
     }
     if (id && action === "templates" && !child) {
-      if (method === "GET") return handleTemplateList(env, id);
+      if (method === "GET") return handleTemplateList(env, id, url);
       if (method === "POST") return handleTemplateSave(request, env, ctx, session, id);
+    }
+    if (id && action === "templates" && child === "default" && !tail && method === "GET") {
+      return handleTemplateDefault(env, id, url);
     }
     if (id && action === "templates" && child === "preview" && !tail && method === "POST") {
       return handleTemplatePreviewDraft(request, env, id);

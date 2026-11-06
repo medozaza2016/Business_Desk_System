@@ -222,12 +222,23 @@ company, and used when a company has no active template. It is the bilingual A4 
 
 ## Editing a template
 
-1. Settings → **Print template** → *Reload active* to load the current HTML into the editor.
-2. Edit, then **Publish version**. A new version is stored and immediately becomes the active one.
-   Older versions stay in the list and can be re-activated at any time.
-3. Existing quotations keep the HTML they were issued with.
+Settings → **Print templates** is one studio with three tabs — *Quotation*, *Sale agreement*, *Purchase
+agreement*. Each tab keeps its own versions, its own live page and its own editor, so editing an agreement
+sheet never touches the quotation page.
 
-Hard limits: 200,000 characters per version; a version cannot be empty.
+1. Pick the tab. *Load built-in* puts the bundled sheet for that kind into the editor; *Reload live* puts the
+   current live version there instead.
+2. Edit, then **Publish version**. A new version is stored and immediately becomes the live one. Older
+   versions stay in the list and can be re-activated at any time.
+3. **Preview edits** proofs the buffer without saving. Agreement tabs proof with sample parties (seller,
+   buyer, broker), the sample vehicle and the kind's next number (`SA-…` / `PA-…`), so every agreement
+   placeholder is visible before it goes live.
+
+Existing quotations and agreements keep the HTML they were issued with; a tab with no published version
+prints the built-in sheet for that kind.
+
+Hard limits: 200,000 characters per version; a version cannot be empty. The live version cannot be deleted —
+activate another one first, and records that used it keep their snapshot.
 
 ## Content Security Policy (why some HTML is inert)
 

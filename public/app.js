@@ -28,6 +28,10 @@ const state = {
   agreementCounts: { sale: 0, purchase: 0 },
   templates: [],
   templateEditId: null,
+  /** which sheet the studio is editing: "quotation", "sale" or "purchase" */
+  templateKind: "quotation",
+  /** versions of every kind, keyed by kind, so the tabs can show each one's live page */
+  templateSheets: {},
   settings: null,
   settingsOpen: false,
   settingsPane: "company",
@@ -330,6 +334,7 @@ function switchCompany(id) {
   storage.set("q_company", id);
   /* every version, editor buffer and preview belongs to the old company */
   state.templates = [];
+  state.templateSheets = {};
   state.templateEditId = null;
   state.agreements = [];
   state.agreementCounts = { sale: 0, purchase: 0 };
@@ -585,6 +590,7 @@ function renderAgreements() {
     ? `/api/export/agreements.csv?company_id=${encodeURIComponent(company.id)}&kind=${state.agreementKind}`
     : "#";
   $("agreementCsv").hidden = isDeleted || !company;
+  $("agreementSheetBtn").hidden = isDeleted || !company;
   $("newAgreementBtn").disabled = !company;
 
   for (const agreement of state.agreements) {
@@ -974,6 +980,7 @@ async function permanentlyDeleteCompany(company) {
       ? `${company.name} deleted, but ${result.asset_cleanup_failed} stored files could not be cleared.`
       : `${company.name} and all its company data were permanently deleted.`);
     state.templates = [];
+    state.templateSheets = {};
     state.templateEditId = null;
     await loadCompanies();
     await refreshNextNumber();
@@ -1045,6 +1052,17 @@ async function saveShareMode(input) {
 const A4_W = 793.7;   // 210mm at 96dpi
 const A4_H = 1122.5;  // 297mm at 96dpi
 
+/* The three sheets a company owns: one quotation page and two agreement pages. Versions,
+   live flags and numbering are per kind, so the studio asks the Worker for one kind at a
+   time with ?kind=. */
+const SHEET_KINDS = [
+  { kind: "quotation", label: "Quotation" },
+  { kind: "sale", label: "Sale agreement" },
+  { kind: "purchase", label: "Purchase agreement" },
+];
+const isSheetKind = (kind) => SHEET_KINDS.some((sheet) => sheet.kind === kind);
+const sheetLabel = (kind) => (SHEET_KINDS.find((sheet) => sheet.kind === kind) || SHEET_KINDS[0]).label;
+
 function fitStudioPreview() {
   const stage = $("studioStage");
   const frame = $("studioFrame");
@@ -1070,6 +1088,14 @@ function paintSheet(html, source, note) {
   fitStudioPreview();
 }
 
+/** One line under the preview: which sample record the sheet was proofed with. */
+function sampleNote(data, prefix = "sample") {
+  const sample = data?.sample || {};
+  const number = sample.agreement_number || sample.quote_number || "next number";
+  const kind = data?.kind && data.kind !== "quotation" ? sample.kind_label || sheetLabel(data.kind) : "";
+  return [prefix, kind, number].filter(Boolean).join(" · ");
+}
+
 function versionButton(label, handler, kind = "") {
   const button = document.createElement("button");
   button.type = "button";
@@ -1091,7 +1117,7 @@ function renderVersionList() {
   if (!state.templates.length) {
     const item = document.createElement("li");
     item.className = "version-empty";
-    item.textContent = "No versions yet — publish the default sheet below.";
+    item.textContent = `No versions yet — the built-in ${sheetLabel(state.templateKind).toLowerCase()} sheet prints until you publish one. Press "Load built-in" to start from it.`;
     list.appendChild(item);
     return;
   }
@@ -1129,6 +1155,21 @@ function renderVersionList() {
   markActiveVersion();
 }
 
+/** Paints the three sheet tabs: which kind is open and whether each one is live. */
+function paintSheetKinds() {
+  for (const tab of $("templateKinds").querySelectorAll(".studio-kind")) {
+    const kind = tab.dataset.kind;
+    const versions = state.templateSheets[kind] || [];
+    const live = versions.find((t) => t.active);
+    const status = tab.querySelector("small");
+    if (status) {
+      status.textContent = live ? `v${live.version} live`
+        : versions.length ? "nothing live" : "built-in sheet";
+    }
+    tab.setAttribute("aria-selected", kind === state.templateKind ? "true" : "false");
+  }
+}
+
 /** Blanks the studio and re-reads the versions of the company now in focus. */
 async function refreshStudio() {
   $("templateList").textContent = "";
@@ -1141,34 +1182,71 @@ async function refreshStudio() {
   await loadTemplates();
 }
 
+/** Switches the studio to another sheet kind; the editor buffer belongs to one kind only. */
+async function selectSheetKind(kind) {
+  if (!isSheetKind(kind) || kind === state.templateKind) return;
+  state.templateKind = kind;
+  state.templateEditId = null;
+  state.templates = [];
+  $("templateList").textContent = "";
+  $("templateHtml").value = "";
+  $("templateName").value = "";
+  $("editorHint").textContent = "flat {{placeholders}}";
+  $("templateChip").textContent = "loading";
+  $("templateMeta").textContent = "loading versions";
+  paintSheetKinds();
+  const url = new URL(location.href);
+  if (url.searchParams.get("view") === "settings") url.searchParams.set("sheet", kind);
+  history.replaceState(null, "", url);
+  paintSheet("", "draft", `loading ${sheetLabel(kind).toLowerCase()} versions`);
+  await loadTemplates();
+}
+
+/**
+ * Reads the versions of all three kinds at once, so the tabs can say which sheet is live
+ * without a round trip every time the operator clicks between them. One kind's list also
+ * becomes the editor's working set (state.templates).
+ */
 async function loadTemplates(selectId) {
   const company = activeCompany();
   $("templateList").textContent = "";
   if (!company) {
+    state.templates = [];
+    state.templateSheets = {};
     $("navTemplateSummary").textContent = "0 versions";
     $("templateChip").textContent = "no company";
     $("templateMeta").textContent = "no company selected";
+    paintSheetKinds();
     return;
   }
   try {
-    const data = await api(`/api/companies/${encodeURIComponent(company.id)}/templates`);
+    const lists = await Promise.all(SHEET_KINDS.map(({ kind }) =>
+      api(`/api/companies/${encodeURIComponent(company.id)}/templates?kind=${encodeURIComponent(kind)}`)
+        .then((data) => [kind, data.templates || []])
+    ));
     /* the desk may have changed while this request was in flight */
     if (company.id !== state.companyId) return;
-    state.templates = data.templates || [];
+    state.templateSheets = {};
+    for (const [kind, list] of lists) state.templateSheets[kind] = list;
   } catch (error) {
     toast(humanError(error), "error");
     return;
   }
-  const live = state.templates.find((t) => t.active);
-  $("templateChip").textContent = live ? `v${live.version} live` : "no live version";
-  $("templateMeta").textContent = live ? `live v${live.version}` : "no live version";
-  $("navTemplateSummary").textContent = plural(state.templates.length, "version", "versions");
+  const versions = state.templateSheets[state.templateKind] || [];
+  const label = sheetLabel(state.templateKind);
+  const live = versions.find((t) => t.active);
+  state.templates = versions;
+  $("templateChip").textContent = live ? `${label} v${live.version} live` : `${label} · built-in`;
+  $("templateMeta").textContent = live ? `live v${live.version}` : "no live version — the built-in sheet prints";
+  const liveKinds = SHEET_KINDS.filter(({ kind }) => (state.templateSheets[kind] || []).some((t) => t.active));
+  $("navTemplateSummary").textContent = `${liveKinds.length} of ${SHEET_KINDS.length} sheets live`;
+  paintSheetKinds();
   renderVersionList();
   const target = selectId
-    || (state.templates.some((t) => t.id === state.templateEditId) ? state.templateEditId : null)
+    || (versions.some((t) => t.id === state.templateEditId) ? state.templateEditId : null)
     || live?.id;
   if (target) await openTemplate(target);
-  else if (!state.templates.length) paintSheet("", "draft", "nothing to preview yet");
+  else paintSheet("", "draft", `the built-in ${label.toLowerCase()} sheet prints until you publish one`);
 }
 
 async function openTemplate(templateId) {
@@ -1184,7 +1262,7 @@ async function openTemplate(templateId) {
     const preview = await api(
       `/api/companies/${encodeURIComponent(company.id)}/templates/${encodeURIComponent(templateId)}/preview`
     );
-    paintSheet(preview.html, `v${data.template.version}`, `sample · ${preview.sample?.quote_number || "next number"}`);
+    paintSheet(preview.html, `v${data.template.version}`, sampleNote(preview));
   } catch (error) {
     toast(humanError(error), "error");
   }
@@ -1197,7 +1275,7 @@ async function previewTemplate(template) {
     const data = await api(
       `/api/companies/${encodeURIComponent(company.id)}/templates/${encodeURIComponent(template.id)}/preview`
     );
-    paintSheet(data.html, `v${template.version}`, `sample · ${data.sample?.quote_number || "next number"}`);
+    paintSheet(data.html, `v${template.version}`, sampleNote(data));
   } catch (error) {
     toast(humanError(error), "error");
   }
@@ -1211,9 +1289,9 @@ async function previewDraft() {
   try {
     const data = await api(`/api/companies/${encodeURIComponent(company.id)}/templates/preview`, {
       method: "POST",
-      body: { html },
+      body: { html, kind: state.templateKind },
     });
-    paintSheet(data.html, "draft", `unsaved edits · ${data.sample?.quote_number || "sample"}`);
+    paintSheet(data.html, "draft", sampleNote(data, "unsaved edits"));
   } catch (error) {
     toast(humanError(error), "error");
   }
@@ -1221,9 +1299,29 @@ async function previewDraft() {
 
 async function loadActiveTemplate() {
   const live = state.templates.find((t) => t.active);
-  if (!live) { toast("No live template to reload.", "error"); return; }
+  if (!live) { toast(`No live ${sheetLabel(state.templateKind).toLowerCase()} to reload — the built-in sheet prints.`, "error"); return; }
   await openTemplate(live.id);
   toast(`Live version v${live.version} loaded.`);
+}
+
+/** Loads the bundled sheet for the open kind into the editor, ready to customise. */
+async function loadBuiltinSheet() {
+  const company = activeCompany();
+  if (!company) return;
+  try {
+    const data = await api(
+      `/api/companies/${encodeURIComponent(company.id)}/templates/default?kind=${encodeURIComponent(state.templateKind)}`
+    );
+    state.templateEditId = null;
+    markActiveVersion();
+    $("templateHtml").value = data.html || "";
+    $("templateName").value = "";
+    $("editorHint").textContent = `built-in ${(data.label || sheetLabel(state.templateKind)).toLowerCase()}`;
+    await previewDraft();
+    toast(`Built-in ${(data.label || sheetLabel(state.templateKind)).toLowerCase()} loaded — publish to make it yours.`);
+  } catch (error) {
+    toast(humanError(error), "error");
+  }
 }
 
 async function publishTemplate() {
@@ -1232,15 +1330,16 @@ async function publishTemplate() {
   const html = $("templateHtml").value;
   if (!html.trim()) { toast("The template cannot be empty.", "error"); return; }
   const activate = $("templateActivate").checked;
-  const name = $("templateName").value.trim() || `Version ${(state.templates[0]?.version || 0) + 1}`;
+  const label = sheetLabel(state.templateKind);
+  const name = $("templateName").value.trim() || `${label} v${(state.templates[0]?.version || 0) + 1}`;
   const button = $("templateSave");
   button.disabled = true;
   try {
     const data = await api(`/api/companies/${encodeURIComponent(company.id)}/templates`, {
       method: "POST",
-      body: { html, name, activate },
+      body: { html, name, activate, kind: state.templateKind },
     });
-    toast(`Published v${data.template.version}${activate ? " and made it live" : ""}.`);
+    toast(`${label} v${data.template.version} published${activate ? " and made live" : ""}.`);
     $("templateName").value = "";
     state.templateEditId = data.template.id;
     await loadTemplates(data.template.id);
@@ -1254,7 +1353,7 @@ async function publishTemplate() {
 async function activateTemplate(template) {
   try {
     await api(`/api/templates/${encodeURIComponent(template.id)}/activate`, { method: "POST" });
-    toast(`Template v${template.version} is live.`);
+    toast(`${sheetLabel(template.kind || state.templateKind)} v${template.version} is live.`);
     state.templateEditId = template.id;
     await loadTemplates(template.id);
   } catch (error) {
@@ -1265,9 +1364,12 @@ async function activateTemplate(template) {
 async function deleteTemplate(template) {
   const company = activeCompany();
   if (!company) return;
+  const label = sheetLabel(template.kind || state.templateKind);
   const okay = await confirmAction({
-    title: `Delete template v${template.version} (${template.name})?`,
-    message: "Existing quotations keep their own snapshot.",
+    title: `Delete ${label} v${template.version} (${template.name})?`,
+    message: template.kind === "quotation"
+      ? "Existing quotations keep their own snapshot."
+      : "Existing agreements keep their own snapshot.",
     confirm: `Delete v${template.version}`,
   });
   if (!okay) return;
@@ -1321,9 +1423,9 @@ const AUDIT_ACTIONS = {
   "company.permanently_deleted": ["Company permanently deleted", "danger"],
   "company.logo_uploaded": ["Company logo uploaded", "success"],
   "company.logo_removed": ["Company logo removed", "neutral"],
-  "template.saved": ["Quotation template saved", "success"],
-  "template.activated": ["Template activated", "success"],
-  "template.deleted": ["Template deleted", "warning"],
+  "template.saved": ["Print sheet published", "success"],
+  "template.activated": ["Print sheet activated", "success"],
+  "template.deleted": ["Print sheet deleted", "warning"],
   "quotation.created": ["Quotation created", "success"],
   "quotation.updated": ["Quotation updated", "neutral"],
   "quotation.cancelled": ["Quotation moved to Deleted", "warning"],
@@ -1428,7 +1530,11 @@ function auditActivitySummary(event) {
       : event.action === "company.updated" ? `Updated profile for ${details.name}` : details.name);
   }
   if (details.version) summaries.push(`Template version ${details.version}`);
-  if (details.detached_records) summaries.push(`${details.detached_records} quotation snapshot(s) retained`);
+  if (event.action.startsWith("template.") && details.kind) {
+    summaries.push(details.kind === "quotation" ? "Quotation sheet"
+      : details.kind === "sale" ? "Sale agreement sheet" : "Purchase agreement sheet");
+  }
+  if (details.detached_records) summaries.push(`${details.detached_records} record(s) keep their snapshot`);
   if (details.quotations_deleted !== undefined) summaries.push(`${details.quotations_deleted} quotation(s) removed`);
   if (details.templates_deleted !== undefined) summaries.push(`${details.templates_deleted} template(s) removed`);
   if (details.numbering_sequences_deleted !== undefined) summaries.push(`${details.numbering_sequences_deleted} numbering sequence(s) removed`);
@@ -1492,7 +1598,7 @@ function auditDetailLabel(key) {
     fields: "Updated fields",
     version: "Template version",
     active: "Published as active",
-    detached_records: "Quotations retaining old template",
+    detached_records: "Records retaining their snapshot",
     quotations_deleted: "Quotations removed",
     templates_deleted: "Templates removed",
     numbering_sequences_deleted: "Numbering sequences removed",
@@ -1701,15 +1807,26 @@ function showView(name) {
   else if (view === "desk") url.searchParams.set("view", "desk");
   else if (view === "agreements") url.searchParams.set("view", "agreements");
   else url.searchParams.delete("view");
-  if (view !== "settings") url.searchParams.delete("pane");
+  if (view !== "settings") {
+    url.searchParams.delete("pane");
+    url.searchParams.delete("sheet");
+  }
   history.replaceState(null, "", url);
   if (view === "settings") window.requestAnimationFrame(fitStudioPreview);
   if (view === "agreements") void loadAgreements();
 }
 
-async function openSettings(pane) {
+async function openSettings(pane, sheet) {
   showView("settings");
   showSettingsPane(pane || new URLSearchParams(location.search).get("pane") || state.settingsPane || "company");
+  /* ?sheet=sale opens the studio on that agreement page instead of the quotation */
+  const wanted = sheet || new URLSearchParams(location.search).get("sheet");
+  if (isSheetKind(wanted)) {
+    state.templateKind = wanted;
+    const url = new URL(location.href);
+    url.searchParams.set("sheet", wanted);
+    history.replaceState(null, "", url);
+  }
   await refreshStudio();
 }
 
@@ -1807,6 +1924,10 @@ function bind() {
     $("agreementSearch").value = "";
     loadAgreements();
   });
+  /* jumps straight to the sheet the open book prints with */
+  $("agreementSheetBtn").addEventListener("click", () => {
+    void openSettings("template", state.agreementKind);
+  });
   $("agreementView").addEventListener("click", (event) => {
     const button = event.target.closest("button[data-view]");
     if (!button || button.dataset.view === state.agreementView) return;
@@ -1859,6 +1980,11 @@ function bind() {
   $("templateSave").addEventListener("click", publishTemplate);
   $("templateLoad").addEventListener("click", loadActiveTemplate);
   $("templatePreviewDraft").addEventListener("click", previewDraft);
+  $("templateDefault").addEventListener("click", loadBuiltinSheet);
+  $("templateKinds").addEventListener("click", (event) => {
+    const tab = event.target.closest(".studio-kind");
+    if (tab) void selectSheetKind(tab.dataset.kind);
+  });
   $("studioRefresh").addEventListener("click", () => {
     const current = state.templates.find((t) => t.id === state.templateEditId);
     if (current) previewTemplate(current);

@@ -232,6 +232,7 @@
           <button type="button" data-sort="date" aria-pressed="false">Date</button>
         </div>
         <a class="btn ghost small" id="agreementCsv" href="#">Export CSV</a>
+        <button class="btn ghost small" id="agreementSheetBtn" type="button">Print sheet</button>
       </div>
 
       <div class="table-wrap agreements-table">
@@ -351,7 +352,7 @@
           <b>Company profile</b><small>letterhead identity</small>
         </button>
         <button class="settings-tab" type="button" data-pane="template">
-          <b>Print template</b><small id="navTemplateSummary">0 versions</small>
+          <b>Print templates</b><small id="navTemplateSummary">0 versions</small>
         </button>
         <button class="settings-tab" type="button" data-pane="access">
           <b>Shared access</b><small>passcode rotation</small>
@@ -417,10 +418,21 @@
 
       <section class="panel settings-pane" data-pane="template" hidden>
         <div class="card-head">
-          <h2>Print template</h2>
+          <h2>Print templates</h2>
           <span class="chip" id="templateChip">v1</span>
         </div>
         <div class="card-body studio">
+          <div class="studio-kinds" id="templateKinds" role="tablist" aria-label="Which sheet">
+            <button class="studio-kind" type="button" role="tab" data-kind="quotation" aria-selected="true">
+              <b>Quotation</b><small>—</small>
+            </button>
+            <button class="studio-kind" type="button" role="tab" data-kind="sale" aria-selected="false">
+              <b>Sale agreement</b><small>—</small>
+            </button>
+            <button class="studio-kind" type="button" role="tab" data-kind="purchase" aria-selected="false">
+              <b>Purchase agreement</b><small>—</small>
+            </button>
+          </div>
           <div class="studio-col">
             <div class="studio-block-head">
               <h3>Versions</h3>
@@ -445,6 +457,7 @@
             <div class="card-actions">
               <button class="btn primary" type="button" id="templateSave">Publish version</button>
               <button class="btn" type="button" id="templatePreviewDraft">Preview edits</button>
+              <button class="btn ghost" type="button" id="templateDefault">Load built-in</button>
               <button class="btn ghost" type="button" id="templateLoad">Reload live</button>
             </div>
           </div>

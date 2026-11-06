@@ -42,12 +42,19 @@ npm run dev                       # local Worker on http://127.0.0.1:8787
 npm run db:migrate:local          # apply pending migrations to the local D1 copy
 npm test                          # scanner geometry, share page, agreement page
 npm run typecheck                 # src (Workers types) + public (DOM types)
-npm run deploy                    # upload Worker + assets
 npm run db:migrate:remote         # apply pending migrations to production D1
+npm run deploy                    # upload Worker + assets
 ```
 
 `npm run db:migrate:remote` prompts for confirmation; in a non-interactive shell wrangler takes the
 default answer, which is "yes".
+
+**Migrate before you deploy.** `npm run deploy` uploads code and assets only — it never touches the
+schema. A release that ships a migration deployed ahead of it answers the new endpoints with
+`500 Internal Server Error` (`D1_ERROR: no such table: …`) until the migration lands. Check what is
+pending with `npx wrangler d1 migrations list challenger-quotation-db --remote`, then apply. On a
+database that already holds paper, export it first
+(`npx wrangler d1 export challenger-quotation-db --remote --output backup.sql`).
 
 Every page states the build it is running at its foot (`Version 1.1.0`). The label comes from
 `public/version.json` through `public/version.js`, so a release bumps that JSON (and the matching
@@ -168,6 +175,15 @@ Agreements reuse every mechanism above and live beside the quotations rather tha
 - Tables: `agreements`, `agreement_scans`, `agreement_sequences` (migration `0007_vehicle_agreements.sql`).
   Templates are rows in the same `templates` table with `kind` = `sale` or `purchase`; a company that never
   published one prints the built-in default sheet for that kind.
+- Sheets are managed exactly like the quotation page: **Settings → Print templates** holds three tabs
+  (*Quotation*, *Sale agreement*, *Purchase agreement*), each with its own version list, its own live page and
+  its own editor. *Load built-in* seeds the editor from the bundled sheet for that kind, so an agreement page
+  can be started from the real document instead of a blank textarea. Versions are counted per kind, so the
+  first sale sheet is `Sale agreement v1` even when the company already ran `Quotation v6`
+  (migration `0008_template_versions_per_kind.sql` widened the old `UNIQUE(company_id, version)` key).
+- The studio proofs an agreement sheet with sample parties, the sample vehicle and the kind's next number
+  (`SA-2026-0000n` / `PA-2026-0000n`), so every agreement placeholder is exercised before publishing. Nothing
+  is written and no serial is burned by a preview.
 - Signed pages live under `scans/agreements/<companyId>/<agreementId>-<random>.<ext>`, their own prefix
   inside the bucket, so a sweep of one prefix can never touch the other. Same formats and ceilings
   (pictures ≤ 4 MB, PDF ≤ 12 MB) and the same in-browser correction pipeline.
@@ -189,8 +205,10 @@ Agreements reuse every mechanism above and live beside the quotations rather tha
 | Symptom | Cause | Fix |
 |---|---|---|
 | `internal_error` on setup | PBKDF2 iterations above 100,000 (workerd cap) or the `settings` table missing | check `npm run db:migrate:remote`, then Logs for `request_failed` |
+| `500` on `POST /api/agreements` (or any new endpoint) | the Worker was deployed before its migration: `no such table: agreements / agreement_sequences` | `npm run db:migrate:remote`, no redeploy needed — the schema is read on every request |
+| `500` publishing a sale or purchase sheet (`UNIQUE constraint failed: templates.company_id, templates.version`) | `templates` still carries the old per-company version key, so a first agreement sheet collides with `Quotation v1` | apply `0008_template_versions_per_kind.sql` (`npm run db:migrate:remote`); existing versions, ids and live flags are carried over |
 | Login works, next request is `401` | cookie not sent (different host, or `Secure` on plain http) | use https in production; `wrangler dev` over http omits `Secure` automatically |
-| Sheet shows `{{placeholder}}` text | a template version imported from the old Jinja files | republish through Settings → *Print template* |
+| Sheet shows `{{placeholder}}` text | a template version imported from the old Jinja files | republish through Settings → *Print templates* (the tab for that sheet) |
 | Sheet has no letterhead | `letterhead_background.png` missing or the template's CSS was edited | redeploy `public/`, keep `url("{{letterhead_url}}")` |
 | `has_assets:false` after a deploy | deployed before `public/` existed | run `npm run deploy` again — assets are uploaded with the Worker |
 | Print preview blocked | the page is embedded in another origin | `frame-ancestors 'self'` — open the desk on its own domain |

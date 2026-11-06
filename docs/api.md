@@ -47,9 +47,12 @@ recorded as `Shared user`; send it from scripts or curl when you want attributio
 | `GET` | `/api/companies/:id/logo` | – | see the public routes above |
 | `POST` | `/api/companies/:id/logo` | `multipart/form-data`, field `file` | `201 {company, template_uses_logo}` — replaces any previous logo |
 | `DELETE` | `/api/companies/:id/logo` | – | `{removed, company}` — the sheet falls back to the template's built-in mark |
-| `GET` | `/api/companies/:id/templates` | – | `{templates:[{id,name,version,active,bytes,created_at}]}` |
+| `GET` | `/api/companies/:id/templates?kind=` | – | `{kind, templates:[{id,name,kind,version,active,bytes,created_at}]}` — one book at a time, newest version first (`kind` is `quotation` by default) |
 | `POST` | `/api/companies/:id/templates` | `{html, name?, activate?, kind?}` | `201 {template}` — always a new version; `kind` is `quotation` (default), `sale` or `purchase`, and versions count per kind |
+| `GET` | `/api/companies/:id/templates/default?kind=` | – | `{kind, label, html}` — the bundled sheet for that kind (what prints until the company publishes its own), so the studio can seed its editor |
 | `GET` | `/api/companies/:id/templates/:templateId` | – | `{template:{…,html}}` |
+| `GET` | `/api/companies/:id/templates/:templateId/preview` | – | `{kind, html, sample}` — the stored version proofed with sample data, through the kind's own token set |
+| `POST` | `/api/companies/:id/templates/preview` | `{html, kind?}` | `{kind, html, sample}` — never persisted; an agreement draft is proofed with sample parties and the kind's next number |
 | `POST` | `/api/templates/:templateId/activate` | – | `{activated:id}` |
 | `GET` | `/api/quotations?company_id=&q=&limit=&sort=&view=` | – | `{quotations:[…], total, sort, view}` (`limit` ≤ 100; `sort=number` default, `sort=date`; `view=active` default or `deleted`) |
 | `GET` | `/api/quotations/next-number?company_id=&date=` | – | `{period, next_serial, quote_number, date}` — **peek only**, never advances the sequence |

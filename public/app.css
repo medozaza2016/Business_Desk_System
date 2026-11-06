@@ -773,6 +773,48 @@ body:has(dialog.modal[open]) { overflow: hidden; }
 
 .studio-col { min-width: 0; }
 
+/* sheet kinds — quotation, sale agreement, purchase agreement: one studio per kind.
+   The bar spans both columns, so the versions/editor side and the proof sheet below it
+   stay exactly where they were. */
+.studio-kinds {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: -8px;
+}
+
+.studio-kind {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 9px 12px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius);
+  background: #fffdfa;
+  font: inherit;
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+}
+
+.studio-kind b { font-size: 12.5px; }
+.studio-kind small {
+  font-family: var(--mono);
+  font-size: 9.5px;
+  letter-spacing: .07em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.studio-kind:hover { border-color: var(--line); background: #fff; }
+.studio-kind[aria-selected="true"] {
+  border-color: #dca9a5;
+  box-shadow: inset 3px 0 0 var(--red);
+  background: #fff;
+}
+.studio-kind[aria-selected="true"] small { color: var(--red); }
+
 .studio-block-head,
 .studio-preview-head {
   display: flex;
@@ -1077,6 +1119,11 @@ hr.rule { border: 0; border-top: 1px dashed var(--line); margin: 16px 0; }
 
 @media (max-width: 1240px) {
   .studio { grid-template-columns: minmax(0, 1fr) minmax(300px, 370px); }
+}
+
+@media (max-width: 760px) {
+  /* three sheet cards would be unreadable side by side on a phone */
+  .studio-kinds { grid-template-columns: minmax(0, 1fr); gap: 6px; }
 }
 
 @media (max-width: 1080px) {
