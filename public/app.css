@@ -2618,3 +2618,119 @@ dialog.scanner::backdrop { background: #14120ee6; }
   .module-choice h2 { font-size: 19px; }
   .module-preview-panel { padding: 23px 19px; }
 }
+
+
+/* ===================== deleted records and retained audit ===================== */
+
+.quote-row-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  min-width: 190px;
+  white-space: nowrap;
+}
+
+.row-deleted { background: #fffdfa; }
+.row-deleted td { color: var(--muted); }
+.row-deleted td.num span:first-child {
+  color: var(--ink-soft);
+  font-family: var(--mono);
+  font-weight: 700;
+}
+
+.audit-table-wrap {
+  max-width: 100%;
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--sheet);
+}
+
+.audit-table {
+  width: 100%;
+  min-width: 850px;
+  border-collapse: collapse;
+  font-size: 11.5px;
+}
+
+.audit-table th {
+  padding: 10px 11px;
+  background: var(--paper);
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: .1em;
+  text-align: left;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.audit-table td {
+  padding: 10px 11px;
+  border-top: 1px solid var(--line-soft);
+  color: var(--ink-soft);
+  vertical-align: top;
+}
+
+.audit-table td.audit-time {
+  min-width: 155px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.audit-table td.audit-details {
+  max-width: 360px;
+  color: var(--muted);
+  font: 10px/1.5 var(--mono);
+  overflow-wrap: anywhere;
+}
+
+.modal-confirm-field { margin: 17px 0 2px; }
+.modal-confirm-field input {
+  width: 100%;
+  min-height: 40px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: #fff;
+  color: var(--ink);
+  font: 13px/1.3 var(--mono);
+}
+.modal-confirm-field input:focus {
+  outline: 2px solid var(--red);
+  outline-offset: 1px;
+}
+.modal-actions .btn:disabled {
+  opacity: .38;
+  cursor: not-allowed;
+}
+
+@media (max-width: 760px) {
+  .table-wrap tbody tr {
+    grid-template-areas:
+      "num num"
+      "vehicle vehicle"
+      "date money"
+      "actions actions";
+  }
+
+  .table-wrap td.quote-row-actions {
+    grid-area: actions;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-start;
+    gap: 7px;
+    min-width: 0;
+    margin-top: 8px;
+    padding-top: 9px;
+    border-top: 1px solid var(--line-soft);
+  }
+
+  .quote-row-actions .btn { flex: 1 1 auto; }
+  .audit-table-wrap { margin: 0 -2px; }
+}
+
+@media (max-width: 480px) {
+  .quote-row-actions .btn { min-height: 36px; }
+}
