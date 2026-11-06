@@ -924,8 +924,12 @@ function showView(name) {
   $("workspaceView").hidden = view !== "desk";
   $("settingsView").hidden = view !== "settings";
   $("invoicePreviewView").hidden = view !== "invoicing";
-  $("companySwitch").hidden = view === "modules" || view === "invoicing";
-  $("modulesLink").hidden = view === "modules";
+  const moduleLanding = view === "modules";
+  $("companySwitch").hidden = moduleLanding || view === "invoicing";
+  $("topbarRule").hidden = moduleLanding || view === "invoicing";
+  $("brandSubtitle").hidden = moduleLanding;
+  $("sessionChip").hidden = moduleLanding;
+  $("modulesLink").hidden = moduleLanding;
   $("settingsLink").hidden = view === "settings";
   const url = new URL(location.href);
   if (view === "settings") url.searchParams.set("view", "settings");
