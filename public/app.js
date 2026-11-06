@@ -669,9 +669,12 @@ async function permanentlyDeleteCompany(company) {
     toast(result.asset_cleanup_failed
       ? `${company.name} deleted, but ${result.asset_cleanup_failed} stored files could not be cleared.`
       : `${company.name} and all its company data were permanently deleted.`);
+    state.templates = [];
+    state.templateEditId = null;
     await loadCompanies();
     await refreshNextNumber();
     await loadQuotes();
+    if (state.settingsOpen) await refreshStudio();
     if (state.settingsPane === "audit") await loadAuditTrail();
   } catch (error) {
     toast(humanError(error), "error");
