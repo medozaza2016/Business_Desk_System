@@ -128,6 +128,7 @@ const shell = ({ title, description, image, body, sheetClass = "" }) => `<!docty
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="color-scheme" content="light">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
 <meta name="robots" content="noindex, nofollow">
 <title>${escapeHtml(title)}</title>
 <meta name="description" content="${escapeHtml(description)}">

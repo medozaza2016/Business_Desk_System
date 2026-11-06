@@ -1592,10 +1592,26 @@ tbody tr:nth-child(n+7) { animation-delay: .13s; }
 .signed-links {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 6px;
+  gap: 9px;
 }
 
-.signed-links .btn { padding: 0 6px; font-size: 10px; letter-spacing: .04em; }
+.signed-links .btn {
+  min-width: 0;
+  padding: 0 9px;
+  font-size: 10.5px;
+  letter-spacing: .03em;
+  white-space: nowrap;
+}
+
+/* Keep the WhatsApp brand mark recognizable on the red primary action. */
+.send-block .icon-whatsapp {
+  width: 19px;
+  height: 19px;
+  padding: 2px;
+  border-radius: 50%;
+  background: #ffffff;
+  color: #25d366;
+}
 
 .signed-hint {
   margin: 0;
