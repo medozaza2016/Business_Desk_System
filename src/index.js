@@ -657,9 +657,23 @@ const handleCompanyPermanentDelete = async (request, env, session, companyId) =>
   ]);
 
   let assetCleanupFailed = 0;
+  let failedAssetKeys = [];
   if (env.ASSETS && assetKeys.length) {
     const outcomes = await Promise.allSettled(assetKeys.map((key) => env.ASSETS.delete(key)));
-    assetCleanupFailed = outcomes.filter((outcome) => outcome.status === "rejected").length;
+    failedAssetKeys = outcomes.flatMap((outcome, index) =>
+      outcome.status === "rejected" ? [assetKeys[index]] : []
+    );
+    assetCleanupFailed = failedAssetKeys.length;
+    if (assetCleanupFailed) {
+      try {
+        await env.DB.prepare("UPDATE audit_events SET details_json=? WHERE id=?")
+          .bind(JSON.stringify({
+            ...details,
+            asset_cleanup_failed: assetCleanupFailed,
+            asset_cleanup_failed_keys: failedAssetKeys,
+          }), auditId).run();
+      } catch { /* the immediate API response still reports the failed cleanup */ }
+    }
   }
   return json({
     deleted: true,
@@ -1229,7 +1243,15 @@ const handleQuotationPermanentDelete = async (request, env, session, id) => {
 
   let assetCleanupFailed = false;
   if (scan?.r2_key && env.ASSETS) {
-    try { await env.ASSETS.delete(scan.r2_key); } catch { assetCleanupFailed = true; }
+    try {
+      await env.ASSETS.delete(scan.r2_key);
+    } catch {
+      assetCleanupFailed = true;
+      try {
+        await env.DB.prepare("UPDATE audit_events SET details_json=? WHERE id=?")
+          .bind(JSON.stringify({ ...details, asset_cleanup_failed: true, asset_cleanup_failed_key: scan.r2_key }), auditId).run();
+      } catch { /* the immediate API response still reports the failed cleanup */ }
+    }
   }
   return json({
     deleted: true,
