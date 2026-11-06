@@ -578,7 +578,7 @@ function renderCompanyList() {
     chip.className = `chip ${company.active ? "ok" : "off"}`;
     chip.textContent = company.active ? "active" : "inactive";
     right.appendChild(chip);
-    if (company.id !== state.companyId && company.active) {
+    if (company.id !== state.companyId) {
       const use = document.createElement("button");
       use.type = "button";
       use.className = "btn ghost small";
