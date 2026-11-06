@@ -312,6 +312,28 @@ const audit = (env, ctx, actor, action, entity, entityId, details = {}) => {
   return run;
 };
 
+/** Read-only view of the retained activity history. Details stay structured for the UI. */
+const handleAuditList = async (env, url) => {
+  const limit = Math.min(Math.max(Number(url.searchParams.get("limit")) || 200, 1), 500);
+  const offset = Math.min(Math.max(Math.floor(Number(url.searchParams.get("offset")) || 0), 0), 1000000);
+  const [rows, count] = await Promise.all([
+    env.DB.prepare(
+      "SELECT id,actor,action,entity,entity_id,details_json,created_at " +
+      "FROM audit_events ORDER BY created_at DESC,id DESC LIMIT ? OFFSET ?"
+    ).bind(limit, offset).all(),
+    env.DB.prepare("SELECT COUNT(*) AS n FROM audit_events").first(),
+  ]);
+  return json({
+    events: (rows.results || []).map((row) => {
+      const { details_json: detailsJson, ...rest } = row;
+      return { ...rest, details: parseJson(detailsJson) };
+    }),
+    total: Number(count?.n || 0),
+    limit,
+    offset,
+  });
+};
+
 let scriptHashCache = null;
 const scriptHash = async () => {
   if (!scriptHashCache) scriptHashCache = b64url(await crypto.subtle.digest("SHA-256", enc.encode(AUTOPRINT_SCRIPT)));
@@ -538,17 +560,147 @@ const handleCompanyPatch = async (request, env, ctx, session, companyId) => {
   if (!sets.length) return json({ error: "no_fields_to_update" }, 400);
   await env.DB.prepare(`UPDATE companies SET ${sets.join(", ")}, updated_at=CURRENT_TIMESTAMP WHERE id=?`)
     .bind(...values, companyId).run();
-  audit(env, ctx, session.name, "company.updated", "company", companyId, { fields: sets.map((s) => s.replace("=?", "")) });
   const row = await env.DB.prepare(`SELECT ${COMPANY_COLUMNS} FROM companies WHERE id=?`).bind(companyId).first();
+  audit(env, ctx, session.name, "company.updated", "company", companyId, {
+    name: row?.name || "",
+    fields: sets.map((s) => s.replace("=?", "")),
+  });
   return json({ company: withLogoUrl(row) });
 };
 
 const handleCompanyDeactivate = async (env, ctx, session, companyId) => {
-  const result = await env.DB.prepare("UPDATE companies SET active=0, updated_at=CURRENT_TIMESTAMP WHERE id=?")
+  const company = await env.DB.prepare("SELECT name FROM companies WHERE id=?").bind(companyId).first();
+  if (!company) return json({ error: "company_not_found" }, 404);
+  await env.DB.prepare("UPDATE companies SET active=0, updated_at=CURRENT_TIMESTAMP WHERE id=?")
     .bind(companyId).run();
-  if (!result.meta || result.meta.changes === 0) return json({ error: "company_not_found" }, 404);
-  audit(env, ctx, session.name, "company.deactivated", "company", companyId, {});
+  audit(env, ctx, session.name, "company.deactivated", "company", companyId, { name: company.name });
   return json({ deactivated: true });
+};
+
+/** Counts the records and R2 objects a permanent company deletion would remove. */
+const handleCompanyDeleteSummary = async (env, companyId) => {
+  const company = await env.DB.prepare(
+    "SELECT id,name,slug,logo_key,letterhead_key,font_key FROM companies WHERE id=?"
+  ).bind(companyId).first();
+  if (!company) return json({ error: "company_not_found" }, 404);
+  const [quotes, templates, sequences, scans] = await Promise.all([
+    env.DB.prepare("SELECT COUNT(*) AS n FROM quotations WHERE company_id=?").bind(companyId).first(),
+    env.DB.prepare("SELECT COUNT(*) AS n FROM templates WHERE company_id=?").bind(companyId).first(),
+    env.DB.prepare("SELECT COUNT(*) AS n FROM quote_sequences WHERE company_id=?").bind(companyId).first(),
+    env.DB.prepare("SELECT COUNT(*) AS n FROM quotation_scans WHERE company_id=?").bind(companyId).first(),
+  ]);
+  const companyAssets = [company.logo_key, company.letterhead_key, company.font_key].filter(Boolean);
+  return json({
+    company: { id: company.id, name: company.name, slug: company.slug },
+    quotations: Number(quotes?.n || 0),
+    templates: Number(templates?.n || 0),
+    numbering_sequences: Number(sequences?.n || 0),
+    signed_scans: Number(scans?.n || 0),
+    company_files: new Set(companyAssets).size,
+    audit_events: "retained",
+  });
+};
+
+/**
+ * Permanently removes one company and all company-owned records.
+ * Audit events are deliberately retained, including the deletion event itself.
+ */
+const handleCompanyPermanentDelete = async (request, env, session, companyId) => {
+  const body = await bodyJson(request);
+  if (!body) return json({ error: "invalid_body" }, 400);
+  const company = await env.DB.prepare(
+    "SELECT id,name,slug,logo_key,letterhead_key,font_key FROM companies WHERE id=?"
+  ).bind(companyId).first();
+  if (!company) return json({ error: "company_not_found" }, 404);
+  if (text(body.confirm_name, 120) !== company.name) {
+    return json({ error: "company_confirmation_required" }, 409);
+  }
+
+  const [quoteCount, templateCount, sequenceCount, scanRows] = await Promise.all([
+    env.DB.prepare("SELECT COUNT(*) AS n FROM quotations WHERE company_id=?").bind(companyId).first(),
+    env.DB.prepare("SELECT COUNT(*) AS n FROM templates WHERE company_id=?").bind(companyId).first(),
+    env.DB.prepare("SELECT COUNT(*) AS n FROM quote_sequences WHERE company_id=?").bind(companyId).first(),
+    env.DB.prepare("SELECT r2_key FROM quotation_scans WHERE company_id=?").bind(companyId).all(),
+  ]);
+  const companyAssetKeys = [...new Set([
+    company.logo_key, company.letterhead_key, company.font_key,
+  ].filter(Boolean))];
+  const scanAssetKeys = [...new Set((scanRows.results || []).map((row) => row.r2_key).filter(Boolean))];
+  const assetKeys = [...new Set([...companyAssetKeys, ...scanAssetKeys])];
+  if (assetKeys.length && !env.ASSETS) return json({ error: "storage_unavailable" }, 503);
+
+  const quotationsDeleted = Number(quoteCount?.n || 0);
+  const templatesDeleted = Number(templateCount?.n || 0);
+  const sequencesDeleted = Number(sequenceCount?.n || 0);
+  const scansDeleted = (scanRows.results || []).length;
+  const auditId = crypto.randomUUID();
+  const details = {
+    name: company.name,
+    slug: company.slug,
+    quotations_deleted: quotationsDeleted,
+    templates_deleted: templatesDeleted,
+    numbering_sequences_deleted: sequencesDeleted,
+    signed_scans_deleted: scansDeleted,
+    company_files_deleted: companyAssetKeys.length,
+    audit_events_retained: true,
+  };
+
+  const results = await env.DB.batch([
+    env.DB.prepare(
+      "INSERT INTO audit_events(id,actor,action,entity,entity_id,details_json) " +
+      "SELECT ?,?,?,?,?,? WHERE EXISTS (SELECT 1 FROM companies WHERE id=?)"
+    ).bind(auditId, String(session.name || "shared"), "company.permanently_deleted", "company", companyId, JSON.stringify(details), companyId),
+    env.DB.prepare(
+      "DELETE FROM quotation_scans WHERE company_id=? " +
+      "AND EXISTS (SELECT 1 FROM companies WHERE id=?)"
+    ).bind(companyId, companyId),
+    env.DB.prepare(
+      "DELETE FROM quotations WHERE company_id=? " +
+      "AND EXISTS (SELECT 1 FROM companies WHERE id=?)"
+    ).bind(companyId, companyId),
+    env.DB.prepare(
+      "DELETE FROM templates WHERE company_id=? " +
+      "AND EXISTS (SELECT 1 FROM companies WHERE id=?)"
+    ).bind(companyId, companyId),
+    env.DB.prepare(
+      "DELETE FROM quote_sequences WHERE company_id=? " +
+      "AND EXISTS (SELECT 1 FROM companies WHERE id=?)"
+    ).bind(companyId, companyId),
+    env.DB.prepare("DELETE FROM companies WHERE id=?").bind(companyId),
+  ]);
+  if (!results[5]?.meta || results[5].meta.changes === 0) {
+    return json({ error: "company_not_found" }, 404);
+  }
+
+  let assetCleanupFailed = 0;
+  let failedAssetKeys = [];
+  if (env.ASSETS && assetKeys.length) {
+    const outcomes = await Promise.allSettled(assetKeys.map((key) => env.ASSETS.delete(key)));
+    failedAssetKeys = outcomes.flatMap((outcome, index) =>
+      outcome.status === "rejected" ? [assetKeys[index]] : []
+    );
+    assetCleanupFailed = failedAssetKeys.length;
+    if (assetCleanupFailed) {
+      try {
+        await env.DB.prepare("UPDATE audit_events SET details_json=? WHERE id=?")
+          .bind(JSON.stringify({
+            ...details,
+            asset_cleanup_failed: assetCleanupFailed,
+            asset_cleanup_failed_keys: failedAssetKeys,
+          }), auditId).run();
+      } catch { /* the immediate API response still reports the failed cleanup */ }
+    }
+  }
+  return json({
+    deleted: true,
+    company: { id: companyId, name: company.name },
+    quotations_deleted: quotationsDeleted,
+    templates_deleted: templatesDeleted,
+    numbering_sequences_deleted: sequencesDeleted,
+    signed_scans_deleted: scansDeleted,
+    asset_cleanup_failed: assetCleanupFailed,
+    audit_events_retained: true,
+  });
 };
 
 /* ------------------------------ company logo ------------------------------ */
@@ -820,19 +972,21 @@ const handleQuotationList = async (env, url) => {
   const search = (url.searchParams.get("q") || "").trim().slice(0, 80);
   const limit = Math.min(Math.max(Number(url.searchParams.get("limit")) || 50, 1), 100);
   const sort = LEDGER_ORDER[url.searchParams.get("sort")] ? url.searchParams.get("sort") : "number";
-  /* the scan is joined here (not per row) so the ledger can mark a signed record
-     without a second round-trip: `scan_created_at` is the flag */
+  const view = ["active", "deleted"].includes(url.searchParams.get("view")) ? url.searchParams.get("view") : "active";
+  const deletedClause = view === "deleted" ? "q.deleted_at IS NOT NULL" : "q.deleted_at IS NULL";
+
   const rows = await env.DB.prepare(
     "SELECT q.id,q.quote_number,q.quote_date,q.model,q.year,q.chassis,q.amount_cents,q.amount_words," +
-    "q.status,q.completed_at,q.created_at,s.created_at AS scan_created_at FROM quotations q " +
+    "q.status,q.completed_at,q.created_at,q.deleted_at,s.created_at AS scan_created_at FROM quotations q " +
     "LEFT JOIN quotation_scans s ON s.quotation_id=q.id " +
-    "WHERE q.company_id=? AND q.deleted_at IS NULL " +
+    `WHERE q.company_id=? AND ${deletedClause} ` +
     "AND (q.quote_number LIKE ? OR q.model LIKE ? OR q.chassis LIKE ? OR q.year LIKE ?) " +
     `ORDER BY ${LEDGER_ORDER[sort]} LIMIT ?`
   ).bind(companyId, `%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`, limit).all();
   const total = await env.DB.prepare(
-    "SELECT COUNT(*) AS n FROM quotations WHERE company_id=? AND deleted_at IS NULL"
+    `SELECT COUNT(*) AS n FROM quotations q WHERE q.company_id=? AND ${deletedClause}`
   ).bind(companyId).first();
+
   return json({
     quotations: (rows.results || []).map((row) => {
       const { scan_created_at: scannedAt, ...rest } = row;
@@ -840,12 +994,14 @@ const handleQuotationList = async (env, url) => {
         ...decorate(rest),
         status: rest.status === "completed" ? "completed" : "issued",
         completed_at: rest.completed_at || null,
+        deleted_at: rest.deleted_at || null,
         signed: Boolean(scannedAt),
         has_scan: Boolean(scannedAt),
       };
     }),
     total: Number(total?.n || 0),
     sort,
+    view,
   });
 };
 
@@ -1029,7 +1185,13 @@ const handleQuotationPatch = async (request, env, ctx, session, id) => {
   } catch {
     return json({ error: "quotation_number_already_exists" }, 409);
   }
-  audit(env, ctx, session.name, "quotation.updated", "quotation", id, { fields: sets.map((s) => s.replace("=?", "")) });
+  const updated = await env.DB.prepare("SELECT quote_number FROM quotations WHERE id=?").bind(id).first();
+  audit(env, ctx, session.name, "quotation.updated", "quotation", id, {
+    quote_number: updated?.quote_number || row.quote_number,
+    previous_quote_number: updated?.quote_number !== row.quote_number ? row.quote_number : undefined,
+    company_id: row.company_id,
+    fields: sets.map((s) => s.replace("=?", "")),
+  });
   return handleQuotationGet(env, id);
 };
 
@@ -1042,8 +1204,86 @@ const handleQuotationCancel = async (env, ctx, session, id) => {
     "UPDATE quotations SET deleted_at=CURRENT_TIMESTAMP WHERE id=? AND deleted_at IS NULL"
   ).bind(id).run();
   if (!result.meta || result.meta.changes === 0) return json({ error: "quotation_not_found" }, 404);
-  audit(env, ctx, session.name, "quotation.cancelled", "quotation", id, {});
+  audit(env, ctx, session.name, "quotation.cancelled", "quotation", id, {
+    quote_number: row.quote_number, company_id: row.company_id,
+  });
   return json({ cancelled: true });
+};
+
+/** Restore a soft-deleted quotation to the active ledger. */
+const handleQuotationRestore = async (env, ctx, session, id) => {
+  const row = await env.DB.prepare(
+    "SELECT id,company_id,quote_number,deleted_at FROM quotations WHERE id=?"
+  ).bind(id).first();
+  if (!row) return json({ error: "quotation_not_found" }, 404);
+  if (!row.deleted_at) return json({ error: "quotation_not_deleted" }, 409);
+  const result = await env.DB.prepare(
+    "UPDATE quotations SET deleted_at=NULL,updated_at=CURRENT_TIMESTAMP WHERE id=? AND deleted_at IS NOT NULL"
+  ).bind(id).run();
+  if (!result.meta || result.meta.changes === 0) return json({ error: "quotation_not_deleted" }, 409);
+  audit(env, ctx, session.name, "quotation.restored", "quotation", id, {
+    quote_number: row.quote_number, company_id: row.company_id,
+  });
+  return json({ restored: true, id, quote_number: row.quote_number });
+};
+
+/** Permanently delete only after a quotation has been soft-deleted. */
+const handleQuotationPermanentDelete = async (request, env, session, id) => {
+  const body = await bodyJson(request);
+  if (!body) return json({ error: "invalid_body" }, 400);
+  const row = await env.DB.prepare(
+    "SELECT id,company_id,quote_number,deleted_at FROM quotations WHERE id=?"
+  ).bind(id).first();
+  if (!row) return json({ error: "quotation_not_found" }, 404);
+  if (!row.deleted_at) return json({ error: "quotation_must_be_deleted_first" }, 409);
+  if (text(body.confirm_number, 60) !== row.quote_number) {
+    return json({ error: "quotation_confirmation_required" }, 409);
+  }
+  const scan = await env.DB.prepare("SELECT r2_key FROM quotation_scans WHERE quotation_id=?")
+    .bind(id).first();
+  if (scan?.r2_key && !env.ASSETS) return json({ error: "storage_unavailable" }, 503);
+
+  const auditId = crypto.randomUUID();
+  const details = {
+    quote_number: row.quote_number,
+    company_id: row.company_id,
+    signed_scan_deleted: Boolean(scan?.r2_key),
+    permanent: true,
+  };
+  const results = await env.DB.batch([
+    env.DB.prepare(
+      "INSERT INTO audit_events(id,actor,action,entity,entity_id,details_json) " +
+      "SELECT ?,?,?,?,?,? WHERE EXISTS (SELECT 1 FROM quotations WHERE id=? AND deleted_at IS NOT NULL)"
+    ).bind(auditId, String(session.name || "shared"), "quotation.permanently_deleted", "quotation", id, JSON.stringify(details), id),
+    env.DB.prepare(
+      "DELETE FROM quotation_scans WHERE quotation_id=? " +
+      "AND EXISTS (SELECT 1 FROM quotations WHERE id=? AND deleted_at IS NOT NULL)"
+    ).bind(id, id),
+    env.DB.prepare("DELETE FROM quotations WHERE id=? AND deleted_at IS NOT NULL").bind(id),
+  ]);
+  if (!results[2]?.meta || results[2].meta.changes === 0) {
+    return json({ error: "quotation_must_be_deleted_first" }, 409);
+  }
+
+  let assetCleanupFailed = false;
+  if (scan?.r2_key && env.ASSETS) {
+    try {
+      await env.ASSETS.delete(scan.r2_key);
+    } catch {
+      assetCleanupFailed = true;
+      try {
+        await env.DB.prepare("UPDATE audit_events SET details_json=? WHERE id=?")
+          .bind(JSON.stringify({ ...details, asset_cleanup_failed: true, asset_cleanup_failed_key: scan.r2_key }), auditId).run();
+      } catch { /* the immediate API response still reports the failed cleanup */ }
+    }
+  }
+  return json({
+    deleted: true,
+    id,
+    quote_number: row.quote_number,
+    asset_cleanup_failed: assetCleanupFailed,
+    audit_event_retained: true,
+  });
 };
 
 /* --------------------------- signed copy (scan) --------------------------- */
@@ -1189,6 +1429,8 @@ const handleQuotationScanUpload = async (request, env, ctx, session, id) => {
     try { await env.ASSETS.delete(previous.r2_key); } catch { /* the new copy is already live */ }
   }
   audit(env, ctx, session.name, "quotation.scan_uploaded", "quotation", id, {
+    quote_number: row.quote_number,
+    company_id: row.company_id,
     content_type: type.mime, bytes: bytes.length, replaced: Boolean(previous), source,
   });
   return json(await quotationPayload(env, id), previous ? 200 : 201);
@@ -1203,7 +1445,9 @@ const handleQuotationScanDelete = async (env, ctx, session, id) => {
   if (env.ASSETS) {
     try { await env.ASSETS.delete(scan.r2_key); } catch { /* the row is already clear */ }
   }
-  audit(env, ctx, session.name, "quotation.scan_removed", "quotation", id, {});
+  audit(env, ctx, session.name, "quotation.scan_removed", "quotation", id, {
+    quote_number: row.quote_number, company_id: row.company_id,
+  });
   return json({ removed: true });
 };
 
@@ -1227,7 +1471,9 @@ const handleQuotationStatus = async (request, env, ctx, session, id) => {
     "UPDATE quotations SET status=?, completed_at=?, updated_at=CURRENT_TIMESTAMP WHERE id=?"
   ).bind(body.status, body.status === "completed" ? new Date().toISOString() : null, id).run();
   audit(env, ctx, session.name,
-    body.status === "completed" ? "quotation.completed" : "quotation.reopened", "quotation", id, {});
+    body.status === "completed" ? "quotation.completed" : "quotation.reopened", "quotation", id, {
+      quote_number: row.quote_number, company_id: row.company_id, status: body.status,
+    });
   return handleQuotationGet(env, id);
 };
 
@@ -1240,7 +1486,9 @@ const handleShareLinkCreate = async (request, env, ctx, session, id) => {
     "UPDATE quotations SET share_token=?, share_token_created_at=CURRENT_TIMESTAMP, updated_at=CURRENT_TIMESTAMP WHERE id=?"
   ).bind(token, id).run();
   audit(env, ctx, session.name,
-    row.share_token ? "quotation.share_link_rotated" : "quotation.share_link_created", "quotation", id, {});
+    row.share_token ? "quotation.share_link_rotated" : "quotation.share_link_created", "quotation", id, {
+      quote_number: row.quote_number, company_id: row.company_id,
+    });
   return json({
     share_path: sharePath(token),
     share_url: shareUrlFor(request, token),
@@ -1254,7 +1502,9 @@ const handleShareLinkRevoke = async (env, ctx, session, id) => {
   await env.DB.prepare(
     "UPDATE quotations SET share_token=NULL, share_token_created_at=NULL, updated_at=CURRENT_TIMESTAMP WHERE id=?"
   ).bind(id).run();
-  audit(env, ctx, session.name, "quotation.share_link_revoked", "quotation", id, {});
+  audit(env, ctx, session.name, "quotation.share_link_revoked", "quotation", id, {
+    quote_number: row.quote_number, company_id: row.company_id,
+  });
   return json({ share_path: null, share_url: null, share_token_created_at: null });
 };
 
@@ -1477,7 +1727,7 @@ const handleCsvExport = async (env, url) => {
 
 /* ============================== router ============================== */
 
-const KNOWN_RESOURCES = new Set(["companies", "templates", "quotations", "export", "auth", "settings"]);
+const KNOWN_RESOURCES = new Set(["companies", "templates", "quotations", "export", "auth", "settings", "audit"]);
 
 const handleHealth = async (env) => {
   try {
@@ -1513,11 +1763,17 @@ async function route(request, env, ctx, url) {
 
   if (path === "/api/auth/passcode" && method === "POST") return handleRotatePasscode(request, env, ctx, session);
 
+  if (resource === "audit" && !id && method === "GET") return handleAuditList(env, url);
+
   if (resource === "companies") {
     if (!id && method === "GET") return handleCompanyList(env);
     if (!id && method === "POST") return handleCompanyCreate(request, env, ctx, session);
     if (id && !action && method === "PATCH") return handleCompanyPatch(request, env, ctx, session, id);
     if (id && !action && method === "DELETE") return handleCompanyDeactivate(env, ctx, session, id);
+    if (id && action === "delete-summary" && !child && method === "GET") return handleCompanyDeleteSummary(env, id);
+    if (id && action === "permanent" && !child && method === "DELETE") {
+      return handleCompanyPermanentDelete(request, env, session, id);
+    }
     if (id && action === "logo" && !child) {
       if (method === "POST") return handleCompanyLogoUpload(request, env, ctx, session, id);
       if (method === "DELETE") return handleCompanyLogoDelete(env, ctx, session, id);
@@ -1546,6 +1802,12 @@ async function route(request, env, ctx, url) {
     if (!id && method === "GET") return handleQuotationList(env, url);
     if (!id && method === "POST") return handleQuotationCreate(request, env, ctx, session);
     if (id === "next-number" && method === "GET") return handleNextNumber(env, url);
+    if (id && action === "restore" && !child && method === "POST") {
+      return handleQuotationRestore(env, ctx, session, id);
+    }
+    if (id && action === "permanent" && !child && method === "DELETE") {
+      return handleQuotationPermanentDelete(request, env, session, id);
+    }
     if (id && !action && method === "GET") return handleQuotationGet(env, id);
     if (id && !action && method === "PATCH") return handleQuotationPatch(request, env, ctx, session, id);
     if (id && !action && method === "DELETE") return handleQuotationCancel(env, ctx, session, id);

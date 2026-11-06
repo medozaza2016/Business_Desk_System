@@ -263,6 +263,10 @@
             <button type="button" data-sort="number" aria-pressed="true">No.</button>
             <button type="button" data-sort="date" aria-pressed="false">Date</button>
           </div>
+          <div class="segmented" id="quoteView" role="group" aria-label="Quotation records">
+            <button type="button" data-view="active" aria-pressed="true">Active</button>
+            <button type="button" data-view="deleted" aria-pressed="false">Deleted</button>
+          </div>
           <a class="btn ghost small" id="csvLink" href="#">Export CSV</a>
         </div>
       </header>
@@ -274,6 +278,7 @@
               <th scope="col">Date</th>
               <th scope="col">Vehicle</th>
               <th scope="col" class="money-head">Estimated value</th>
+              <th scope="col" id="quoteActionsHead" hidden>Actions</th>
             </tr>
           </thead>
           <tbody id="quotesBody"></tbody>
@@ -310,6 +315,9 @@
         </button>
         <button class="settings-tab" type="button" data-pane="companies">
           <b>Companies</b><small id="navCompanySummary">0 companies</small>
+        </button>
+        <button class="settings-tab" type="button" data-pane="audit">
+          <b>Audit trail</b><small id="navAuditSummary">activity history</small>
         </button>
       </nav>
       <div class="settings-nav-foot">
@@ -463,6 +471,35 @@
             </div>
             <div class="card-actions"><button class="btn" type="submit">Add company</button></div>
           </form>
+        </div>
+      </section>
+
+      <section class="panel settings-pane" data-pane="audit" hidden>
+        <div class="card-head">
+          <h2>Audit trail</h2>
+          <span class="chip" id="auditCountChip">—</span>
+        </div>
+        <div class="card-body">
+          <p class="rail-note lead">A retained history of changes and destructive actions across the desk. Audit entries are not removed when a company or quotation is permanently deleted.</p>
+          <div class="audit-table-wrap">
+            <table class="audit-table">
+              <thead>
+                <tr>
+                  <th scope="col">Time</th>
+                  <th scope="col">Actor</th>
+                  <th scope="col">Action</th>
+                  <th scope="col">Record</th>
+                  <th scope="col">Details</th>
+                </tr>
+              </thead>
+              <tbody id="auditBody"></tbody>
+            </table>
+          </div>
+          <p class="empty" id="auditEmpty" hidden>No audit events have been recorded yet.</p>
+          <div class="audit-pagination">
+            <span class="rail-note" id="auditRangeNote">Showing recent events</span>
+            <button class="btn ghost small" id="auditLoadMore" type="button" hidden>Load older events</button>
+          </div>
         </div>
       </section>
     </div>

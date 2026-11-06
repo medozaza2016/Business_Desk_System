@@ -12,6 +12,7 @@ const state = {
   companyId: null,
   quotes: [],
   search: "",
+  quoteView: "active",
   /** "number" (newest serial first) or "date"; the Worker orders the rows */
   sort: "number",
   templates: [],
@@ -19,6 +20,8 @@ const state = {
   settings: null,
   settingsOpen: false,
   settingsPane: "company",
+  auditOffset: 0,
+  auditLoading: false,
 };
 
 const storage = {
@@ -59,6 +62,10 @@ const humanError = (error) => {
     template_not_found: "That template version no longer exists.",
     template_is_active: "The live version cannot be deleted. Activate another version first.",
     company_not_found: "That company no longer exists.",
+    company_confirmation_required: "Type the exact company name to confirm permanent deletion.",
+    quotation_not_deleted: "Only deleted quotations can be restored.",
+    quotation_must_be_deleted_first: "Move the quotation to Deleted before permanently removing it.",
+    quotation_confirmation_required: "Type the exact quotation number to confirm permanent deletion.",
     invalid_body: "The request could not be read.",
     logo_file_required: "Choose an image file first.",
     unsupported_image_type: "Use a PNG, JPEG or WebP image.",
@@ -192,6 +199,10 @@ async function loadCompanies() {
   state.companies = data.companies || [];
   if (!state.companies.length) {
     state.companyId = null;
+    storage.set("q_company", "");
+    renderCompanySelect();
+    paintCompanyChrome();
+    paintCompanySettings();
     return;
   }
   const stored = storage.get("q_company");
@@ -268,34 +279,46 @@ function renderQuotes() {
   const body = $("quotesBody");
   body.textContent = "";
   const company = activeCompany();
+  const isDeleted = state.quoteView === "deleted";
   const total = state.quotes.length;
   const suffix = state.search ? ` matching “${state.search}”` : "";
   const order = state.sort === "date" ? "newest date first" : "highest number first";
+  $("ledgerTitle").textContent = isDeleted
+    ? `Deleted · ${company?.name || "quotations"}`
+    : (company?.name || "Quotations");
   $("ledgerMeta").textContent = company
-    ? `${total} record${total === 1 ? "" : "s"}${suffix} · ${order} · prefix ${company.quotation_prefix || "QA-"} · currency ${company.currency || "AED"}`
+    ? `${total} ${isDeleted ? "deleted " : ""}record${total === 1 ? "" : "s"}${suffix} · ${order} · prefix ${company.quotation_prefix || "QA-"} · currency ${company.currency || "AED"}`
     : "No company configured yet.";
   $("emptyState").hidden = total > 0;
+  $("emptyState").innerHTML = isDeleted
+    ? "<b>No deleted quotations</b> Deleted records for this company will appear here."
+    : "<b>No quotations yet</b> Enter a vehicle on the left to issue the first record.";
+  $("quoteActionsHead").hidden = !isDeleted;
+  $("csvLink").hidden = isDeleted;
+  for (const button of $("quoteView").querySelectorAll("button")) {
+    button.setAttribute("aria-pressed", button.dataset.view === state.quoteView ? "true" : "false");
+  }
   paintSort();
 
   for (const quote of state.quotes) {
     const row = document.createElement("tr");
-    /* The line itself is the way in: print, complete and cancel all live on the
-       record, so the ledger carries no buttons at all. The number stays a real
-       link underneath so the keyboard and screen readers keep their own door. */
-    row.className = "row-open";
-    row.dataset.href = `/quote?id=${encodeURIComponent(quote.id)}`;
+    if (isDeleted) {
+      row.className = "row-deleted";
+    } else {
+      row.className = "row-open";
+      row.dataset.href = `/quote?id=${encodeURIComponent(quote.id)}`;
+    }
 
     const numberCell = document.createElement("td");
     numberCell.className = "num";
     const numberWrap = document.createElement("div");
     numberWrap.className = "num-stack";
-    const link = document.createElement("a");
-    link.href = `/quote?id=${encodeURIComponent(quote.id)}`;
+    const link = document.createElement(isDeleted ? "span" : "a");
+    if (!isDeleted) link.href = `/quote?id=${encodeURIComponent(quote.id)}`;
     link.textContent = quote.quote_number;
     const mark = document.createElement("span");
-    /* three states, one glance: filed, signed and waiting for the signature */
-    mark.className = `chip ${quote.status === "completed" || quote.has_scan ? "ok" : "off"}`;
-    mark.textContent = quote.status === "completed" ? "completed" : quote.has_scan ? "signed" : "unsigned";
+    mark.className = `chip ${isDeleted ? "off" : quote.status === "completed" || quote.has_scan ? "ok" : "off"}`;
+    mark.textContent = isDeleted ? "deleted" : quote.status === "completed" ? "completed" : quote.has_scan ? "signed" : "unsigned";
     numberWrap.append(link, mark);
     numberCell.appendChild(numberWrap);
     row.appendChild(numberCell);
@@ -313,6 +336,25 @@ function renderQuotes() {
 
     row.appendChild(rowCell(`${company?.currency || "AED"} ${quote.amount}`, "money", "Estimated value"));
 
+    if (isDeleted) {
+      const actions = document.createElement("td");
+      actions.className = "quote-row-actions";
+      const restore = document.createElement("button");
+      restore.type = "button";
+      restore.className = "btn ghost small";
+      restore.dataset.quoteAction = "restore";
+      restore.dataset.quoteId = quote.id;
+      restore.textContent = "Restore";
+      const remove = document.createElement("button");
+      remove.type = "button";
+      remove.className = "btn danger small";
+      remove.dataset.quoteAction = "permanent-delete";
+      remove.dataset.quoteId = quote.id;
+      remove.dataset.quoteNumber = quote.quote_number;
+      remove.textContent = "Delete permanently";
+      actions.append(restore, remove);
+      row.appendChild(actions);
+    }
     body.appendChild(row);
   }
 }
@@ -326,7 +368,7 @@ function paintSort() {
 
 async function loadQuotes() {
   if (!state.companyId) { state.quotes = []; renderQuotes(); return; }
-  const query = new URLSearchParams({ company_id: state.companyId, limit: "100", sort: state.sort });
+  const query = new URLSearchParams({ company_id: state.companyId, limit: "100", sort: state.sort, view: state.quoteView });
   if (state.search) query.set("q", state.search);
   try {
     const data = await api(`/api/quotations?${query.toString()}`);
@@ -334,6 +376,42 @@ async function loadQuotes() {
     renderQuotes();
   } catch (error) {
     if (error.status === 401) return signOut("Your session expired.");
+    toast(humanError(error), "error");
+  }
+}
+
+/** Restore a quotation that is currently in the Deleted view. */
+async function restoreQuotation(id) {
+  try {
+    const data = await api(`/api/quotations/${encodeURIComponent(id)}/restore`, { method: "POST" });
+    toast(`${data.quote_number} restored.`);
+    await loadQuotes();
+  } catch (error) {
+    toast(humanError(error), "error");
+  }
+}
+
+/** Permanently remove a soft-deleted quotation, including its signed scan. */
+async function permanentlyDeleteQuotation(id, quoteNumber) {
+  const okay = await confirmAction({
+    title: `Permanently delete ${quoteNumber}?`,
+    message: "This removes the quotation and its stored signed file. Its audit history is retained. This action cannot be undone.",
+    confirm: "Delete permanently",
+    cancel: "Keep record",
+    expectedText: quoteNumber,
+    inputLabel: "Type the quotation number to confirm",
+  });
+  if (!okay) return;
+  try {
+    const result = await api(`/api/quotations/${encodeURIComponent(id)}/permanent`, {
+      method: "DELETE",
+      body: { confirm_number: quoteNumber },
+    });
+    toast(result.asset_cleanup_failed
+      ? `${quoteNumber} removed, but its stored file could not be cleared.`
+      : `${quoteNumber} permanently deleted.`);
+    await loadQuotes();
+  } catch (error) {
     toast(humanError(error), "error");
   }
 }
@@ -363,6 +441,7 @@ async function submitQuote(event) {
     for (const id of ["model", "year", "chassis", "comments", "amount"]) $(id).value = "";
     $("model").focus();
     await refreshNextNumber();
+    if (state.quoteView !== "active") state.quoteView = "active";
     await loadQuotes();
   } catch (error) {
     toast(humanError(error), "error");
@@ -508,6 +587,13 @@ function renderCompanyList() {
       use.addEventListener("click", () => { switchCompany(company.id); toast(`Switched to ${company.name}`); });
       right.appendChild(use);
     }
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.className = "btn danger small";
+    remove.style.marginLeft = "8px";
+    remove.textContent = "Delete permanently";
+    remove.addEventListener("click", () => permanentlyDeleteCompany(company));
+    right.appendChild(remove);
     item.append(name, right);
     list.appendChild(item);
   }
@@ -559,6 +645,42 @@ async function deactivateCompany() {
     await loadCompanies();
     await loadQuotes();
     paintCompanySettings();
+  } catch (error) {
+    toast(humanError(error), "error");
+  }
+}
+
+/** Permanently remove a company only after showing its impact and typing its name. */
+async function permanentlyDeleteCompany(company) {
+  try {
+    const summary = await api(`/api/companies/${encodeURIComponent(company.id)}/delete-summary`);
+    const s = summary;
+    const message = `This will permanently remove ${s.quotations} quotations (including deleted ones), ${s.templates} templates, ${s.numbering_sequences} numbering sequences, ${s.signed_scans} signed scans and ${s.company_files} company files. Audit history will be retained. This cannot be undone.`;
+    const okay = await confirmAction({
+      title: `Delete ${company.name} and all its data?`,
+      message,
+      confirm: "Delete company permanently",
+      cancel: "Keep company",
+      expectedText: company.name,
+      inputLabel: "Type the exact company name to confirm",
+    });
+    if (!okay) return;
+    const result = await api(`/api/companies/${encodeURIComponent(company.id)}/permanent`, {
+      method: "DELETE",
+      body: { confirm_name: company.name },
+    });
+    state.search = "";
+    $("searchInput").value = "";
+    toast(result.asset_cleanup_failed
+      ? `${company.name} deleted, but ${result.asset_cleanup_failed} stored files could not be cleared.`
+      : `${company.name} and all its company data were permanently deleted.`);
+    state.templates = [];
+    state.templateEditId = null;
+    await loadCompanies();
+    await refreshNextNumber();
+    await loadQuotes();
+    if (state.settingsOpen) await refreshStudio();
+    if (state.settingsPane === "audit") await loadAuditTrail();
   } catch (error) {
     toast(humanError(error), "error");
   }
@@ -890,9 +1012,71 @@ async function rotatePasscode(event) {
   }
 }
 
+async function loadAuditTrail({ append = false } = {}) {
+  if (state.auditLoading) return;
+  const body = $("auditBody");
+  const button = $("auditLoadMore");
+  const limit = 200;
+  if (!append) {
+    state.auditOffset = 0;
+    body.textContent = "";
+    $("auditEmpty").hidden = true;
+    button.hidden = true;
+  }
+  const offset = state.auditOffset;
+  state.auditLoading = true;
+  button.disabled = true;
+  try {
+    const data = await api(`/api/audit?limit=${limit}&offset=${offset}`);
+    const events = data.events || [];
+    $("auditCountChip").textContent = `${data.total} events`;
+    $("navAuditSummary").textContent = `${data.total} events`;
+    for (const event of events) {
+      const row = document.createElement("tr");
+      const stamp = String(event.created_at || "");
+      const normalizedStamp = stamp.includes("T") ? stamp : `${stamp.replace(" ", "T")}Z`;
+      const when = new Date(normalizedStamp);
+      const record = event.details?.quote_number || event.details?.name || event.entity_id || "—";
+      const values = [
+        Number.isNaN(when.getTime()) ? stamp : when.toLocaleString(),
+        event.actor || "shared",
+        event.action || "—",
+        `${event.entity || "record"} · ${record}`,
+        JSON.stringify(event.details || {}),
+      ];
+      for (const [index, value] of values.entries()) {
+        const cell = document.createElement("td");
+        cell.textContent = String(value);
+        if (index === 4) cell.className = "audit-details";
+        if (index === 0) cell.className = "audit-time";
+        row.appendChild(cell);
+      }
+      body.appendChild(row);
+    }
+    state.auditOffset = offset + events.length;
+    $("auditEmpty").hidden = data.total > 0;
+    const showing = Math.min(state.auditOffset, data.total);
+    $("auditRangeNote").textContent = data.total
+      ? `Showing ${showing} of ${data.total} events`
+      : "No recorded activity";
+    button.hidden = state.auditOffset >= data.total;
+  } catch (error) {
+    if (!append) {
+      $("auditCountChip").textContent = "unavailable";
+      $("auditEmpty").hidden = false;
+      $("auditEmpty").textContent = humanError(error);
+    } else {
+      toast(humanError(error), "error");
+    }
+  } finally {
+    state.auditLoading = false;
+    button.disabled = false;
+  }
+}
+
 /* ------------------------------------------------------------------ views --- */
 
-const SETTINGS_PANES = ["company", "template", "access", "share", "companies"];
+const SETTINGS_PANES = ["company", "template", "access", "share", "companies", "audit"];
 
 /** Side-panel tabs: one pane at a time, mirrored in ?pane= so links can deep-link. */
 function showSettingsPane(name, { remember = true } = {}) {
@@ -913,6 +1097,7 @@ function showSettingsPane(name, { remember = true } = {}) {
     history.replaceState(null, "", url);
   }
   if (pane === "template") window.requestAnimationFrame(fitStudioPreview);
+  if (pane === "audit") void loadAuditTrail();
 }
 
 function showView(name) {
@@ -1019,6 +1204,7 @@ function bind() {
     const tab = event.target.closest(".settings-tab");
     if (tab) showSettingsPane(tab.dataset.pane);
   });
+  $("auditLoadMore").addEventListener("click", () => { void loadAuditTrail({ append: true }); });
   $("passcodeForm").addEventListener("submit", rotatePasscode);
   $("ledgerSort").addEventListener("click", (event) => {
     const button = event.target.closest("button[data-sort]");
@@ -1042,6 +1228,25 @@ function bind() {
     event.preventDefault();
     state.search = $("searchInput").value.trim();
     loadQuotes();
+  });
+
+  $("quoteView").addEventListener("click", (event) => {
+    const button = event.target.closest("button[data-view]");
+    if (!button || button.dataset.view === state.quoteView) return;
+    state.quoteView = button.dataset.view === "deleted" ? "deleted" : "active";
+    loadQuotes();
+  });
+
+  $("quotesBody").addEventListener("click", (event) => {
+    const button = event.target.closest("button[data-quote-action]");
+    if (!button) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const id = button.dataset.quoteId;
+    if (button.dataset.quoteAction === "restore") void restoreQuotation(id);
+    else if (button.dataset.quoteAction === "permanent-delete") {
+      void permanentlyDeleteQuotation(id, button.dataset.quoteNumber || "");
+    }
   });
 
   /* The ledger line is the door: print, complete and cancel all live on the
