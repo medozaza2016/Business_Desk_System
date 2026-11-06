@@ -122,8 +122,10 @@ function toast(message, kind = "ok") {
 
 function showGate() {
   $("topbar").hidden = true;
+  $("modulesView").hidden = true;
   $("workspaceView").hidden = true;
   $("settingsView").hidden = true;
+  $("invoicePreviewView").hidden = true;
   $("gate").hidden = false;
   $("gatePasscode").focus();
 }
