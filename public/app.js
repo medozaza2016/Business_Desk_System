@@ -3,6 +3,24 @@
 
 import { confirmAction } from "./dialog.js";
 
+const APP_VERSION_FALLBACK = "1.0.0";
+
+async function loadAppVersion() {
+  let version = APP_VERSION_FALLBACK;
+  try {
+    const response = await fetch("/version.json", { cache: "no-store" });
+    if (response.ok) {
+      const data = await response.json();
+      if (typeof data.version === "string" && /^\\d+\\.\\d+\\.\\d+(?:[-+][A-Za-z0-9.-]+)?$/.test(data.version)) {
+        version = data.version;
+      }
+    }
+  } catch { /* retain the bundled fallback */ }
+  for (const label of document.querySelectorAll(".app-version-label")) {
+    label.textContent = `Version ${version}`;
+  }
+}
+
 /** @param {string} id @returns {any} */
 const $ = (id) => document.getElementById(id);
 
@@ -194,6 +212,7 @@ async function mountTurnstile(status) {
 }
 
 function showGate() {
+  $("appVersionFooter").hidden = true;
   $("topbar").hidden = true;
   $("modulesView").hidden = true;
   $("workspaceView").hidden = true;
@@ -1418,6 +1437,7 @@ function showView(name) {
   $("workspaceView").hidden = view !== "desk";
   $("settingsView").hidden = view !== "settings";
   $("invoicePreviewView").hidden = view !== "invoicing";
+  $("appVersionFooter").hidden = view === "modules";
   const moduleLanding = view === "modules";
   $("companySwitch").hidden = moduleLanding || view === "invoicing";
   $("topbarRule").hidden = moduleLanding || view === "invoicing";
@@ -1603,6 +1623,7 @@ function bind() {
   });
 }
 
+loadAppVersion();
 bind();
 boot();
 
