@@ -14,9 +14,10 @@
 <header class="topbar" id="topbar" hidden>
   <a class="brand" href="/"><b>BUSINESS DESK</b><small>documents &amp; customer operations</small></a>
   <span class="topbar-rule"></span>
-  <label class="switch">Company
+  <label class="switch" id="companySwitch">Company
     <select id="companySelect" aria-label="Active company"></select>
   </label>
+  <button class="btn ghost small" id="modulesLink" type="button" hidden>Modules</button>
   <span class="spacer"></span>
   <span class="chip" id="sessionChip">—</span>
   <a class="btn ghost small" href="/?view=settings" id="settingsLink">Settings</a>
@@ -99,7 +100,7 @@
           </div>
           <div class="module-symbol" aria-hidden="true">I</div>
           <h3>Invoicing</h3>
-          <p>Extend the document workflow into invoice creation and management, with a planned connection to approved quotations.</p>
+          <p>Create and manage independent invoices with their own records, numbering and payment status.</p>
         </article>
         <article class="module-card">
           <div class="module-card-top">
@@ -115,8 +116,8 @@
 
     <section class="landing-workflow" aria-labelledby="workflowTitle">
       <div class="workflow-heading">
-        <p class="eyebrow">The document workflow</p>
-        <h2 id="workflowTitle">One workflow. Multiple stages.</h2>
+        <p class="eyebrow">Platform modules</p>
+        <h2 id="workflowTitle">Separate modules. One platform.</h2>
       </div>
       <div class="workflow-steps">
         <div class="workflow-step">
@@ -124,7 +125,7 @@
           <b>Quotation</b>
           <small>Available now</small>
         </div>
-        <span class="workflow-arrow" aria-hidden="true">→</span>
+        <span class="workflow-arrow" aria-hidden="true">·</span>
         <div class="workflow-step">
           <span>02</span>
           <b>Invoice</b>
@@ -144,6 +145,74 @@
       <span>Business documents and customer operations.</span>
       <a href="#login">Sign in ↑</a>
     </footer>
+  </div>
+</main>
+
+<main class="view module-hub" id="modulesView" hidden>
+  <div class="module-shell">
+    <header class="module-page-head">
+      <div>
+        <p class="eyebrow">Your business platform</p>
+        <h1>Choose a module</h1>
+        <p class="module-page-lede">Select the area you want to work in.</p>
+      </div>
+      <span class="module-count">02 MODULES</span>
+    </header>
+
+    <div class="module-picker-grid">
+      <article class="module-choice module-choice-available">
+        <div class="module-choice-top">
+          <span class="module-index">01 / DOCUMENTS</span>
+          <span class="module-state">Available</span>
+        </div>
+        <div class="module-choice-mark" aria-hidden="true">Q</div>
+        <h2>Quotation Management</h2>
+        <p>Create company-specific quotations, manage templates and signed documents, and keep a searchable quotation history.</p>
+        <button class="module-choice-action" id="openQuotations" type="button">
+          <span>Open module</span><span aria-hidden="true">→</span>
+        </button>
+      </article>
+
+      <article class="module-choice module-choice-coming">
+        <div class="module-choice-top">
+          <span class="module-index">02 / FINANCE</span>
+          <span class="module-state future">Coming soon</span>
+        </div>
+        <div class="module-choice-mark" aria-hidden="true">I</div>
+        <h2>Invoicing</h2>
+        <p>A dedicated module for creating and tracking invoices as independent business documents.</p>
+        <button class="module-choice-action" id="openInvoicingPreview" type="button">
+          <span>View preview</span><span aria-hidden="true">→</span>
+        </button>
+      </article>
+    </div>
+
+    <footer class="module-hub-footer">
+      <span>BUSINESS DESK</span>
+      <span>One sign-in. Separate business modules.</span>
+    </footer>
+  </div>
+</main>
+
+<main class="view module-preview" id="invoicePreviewView" hidden>
+  <div class="module-preview-shell">
+    <button class="btn ghost small module-back" id="backToModules" type="button">← Back to modules</button>
+    <section class="module-preview-panel">
+      <div class="module-preview-kicker">
+        <span class="module-index">02 / FINANCE</span>
+        <span class="module-state future">Coming soon</span>
+      </div>
+      <div class="module-preview-mark" aria-hidden="true">I</div>
+      <p class="eyebrow">Module preview</p>
+      <h1>Invoicing</h1>
+      <p class="module-preview-lede">A dedicated place to create, issue and track invoices.</p>
+      <p class="module-preview-copy">Invoicing is planned as a standalone module with its own records and numbering. It will remain separate from quotation management, rather than converting quotations into invoices.</p>
+      <div class="module-preview-note">
+        <span class="module-preview-note-mark" aria-hidden="true">i</span>
+        <p>This module is not available yet. Your existing quotation workflow is unchanged.</p>
+      </div>
+      <button class="btn primary" id="previewBackAction" type="button">Return to modules</button>
+    </section>
   </div>
 </main>
 

@@ -1,5 +1,5 @@
 /* Challenger Quotation Desk — client
-   No framework, no build step. Views: gate → workspace → settings. */
+   No framework, no build step. Views: gate → modules → quotation workspace / settings / invoicing preview. */
 
 import { confirmAction } from "./dialog.js";
 
@@ -122,8 +122,10 @@ function toast(message, kind = "ok") {
 
 function showGate() {
   $("topbar").hidden = true;
+  $("modulesView").hidden = true;
   $("workspaceView").hidden = true;
   $("settingsView").hidden = true;
+  $("invoicePreviewView").hidden = true;
   $("gate").hidden = false;
   $("gatePasscode").focus();
 }
@@ -914,21 +916,25 @@ function showSettingsPane(name, { remember = true } = {}) {
 }
 
 function showView(name) {
-  state.settingsOpen = name === "settings";
+  const view = ["desk", "settings", "modules", "invoicing"].includes(name) ? name : "modules";
+  state.settingsOpen = view === "settings";
   $("topbar").hidden = false;
   $("gate").hidden = true;
-  $("workspaceView").hidden = name !== "desk";
-  $("settingsView").hidden = name !== "settings";
-  /* the topbar's Settings button would only reload the page you are already on */
-  $("settingsLink").hidden = name === "settings";
+  $("modulesView").hidden = view !== "modules";
+  $("workspaceView").hidden = view !== "desk";
+  $("settingsView").hidden = view !== "settings";
+  $("invoicePreviewView").hidden = view !== "invoicing";
+  $("companySwitch").hidden = view === "modules" || view === "invoicing";
+  $("modulesLink").hidden = view === "modules";
+  $("settingsLink").hidden = view === "settings";
   const url = new URL(location.href);
-  if (name === "settings") url.searchParams.set("view", "settings");
-  else {
-    url.searchParams.delete("view");
-    url.searchParams.delete("pane");
-  }
+  if (view === "settings") url.searchParams.set("view", "settings");
+  else if (view === "desk") url.searchParams.set("view", "desk");
+  else if (view === "invoicing") url.searchParams.set("view", "invoicing");
+  else url.searchParams.delete("view");
+  if (view !== "settings") url.searchParams.delete("pane");
   history.replaceState(null, "", url);
-  if (name === "settings") window.requestAnimationFrame(fitStudioPreview);
+  if (view === "settings") window.requestAnimationFrame(fitStudioPreview);
 }
 
 async function openSettings(pane) {
@@ -973,9 +979,11 @@ async function boot() {
   await loadSettings();
   await refreshNextNumber();
   await loadQuotes();
-  const wantsSettings = new URLSearchParams(location.search).get("view") === "settings";
-  if (wantsSettings) await openSettings();
-  else showView("desk");
+  const requestedView = new URLSearchParams(location.search).get("view");
+  if (requestedView === "settings") await openSettings();
+  else if (requestedView === "desk") showView("desk");
+  else if (requestedView === "invoicing") showView("invoicing");
+  else showView("modules");
 }
 
 function bind() {
@@ -984,6 +992,11 @@ function bind() {
   $("companySelect").addEventListener("change", () => switchCompany($("companySelect").value));
   $("quoteDate").addEventListener("change", refreshNextNumber);
   $("logoutBtn").addEventListener("click", () => signOut());
+  $("modulesLink").addEventListener("click", () => showView("modules"));
+  $("openQuotations").addEventListener("click", () => showView("desk"));
+  $("openInvoicingPreview").addEventListener("click", () => showView("invoicing"));
+  $("backToModules").addEventListener("click", () => showView("modules"));
+  $("previewBackAction").addEventListener("click", () => showView("modules"));
   $("companyForm").addEventListener("submit", saveCompany);
   $("logoPick").addEventListener("click", () => $("logoFile").click());
   $("logoFile").addEventListener("change", () => {
