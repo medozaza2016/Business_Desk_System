@@ -1100,8 +1100,10 @@ function auditActivitySummary(event) {
     const fields = details.fields.map((field) => AUDIT_FIELD_LABELS[field] || String(field).replaceAll("_", " "));
     summaries.push(`Updated: ${fields.join(", ")}`);
   }
-  if (details.name && event.action !== "company.created" && event.action !== "company.updated") {
-    summaries.push(details.name);
+  if (details.name) {
+    summaries.push(event.action === "company.created"
+      ? `Created ${details.name}`
+      : event.action === "company.updated" ? `Updated profile for ${details.name}` : details.name);
   }
   if (details.version) summaries.push(`Template version ${details.version}`);
   if (details.detached_records) summaries.push(`${details.detached_records} quotation snapshot(s) retained`);
@@ -1118,6 +1120,8 @@ function auditActivitySummary(event) {
   if (details.share_mode) summaries.push(details.share_mode === "link" ? "Share by private link" : "Share signed file");
   if (details.status) summaries.push(`Status: ${details.status}`);
   if (details.active !== undefined) summaries.push(details.active ? "Set as active" : "Saved as inactive");
+  if (details.slug) summaries.push(`Reference: ${details.slug}`);
+  if (details.audit_events_retained) summaries.push("Audit history retained");
   if (details.signed_scan_deleted !== undefined) summaries.push(details.signed_scan_deleted ? "Signed document removed" : "No signed document attached");
   return summaries.length ? summaries.join(" · ") : "Activity recorded";
 }
@@ -1183,6 +1187,7 @@ function renderAuditEvent(event) {
 
   const timeCell = document.createElement("td");
   timeCell.className = "audit-time-cell";
+  timeCell.dataset.label = "Date and time";
   const timeDate = document.createElement("span");
   timeDate.className = "audit-date";
   timeDate.textContent = date.date;
@@ -1203,6 +1208,7 @@ function renderAuditEvent(event) {
   actor.textContent = event.actor && event.actor !== "shared" && event.actor !== "Shared user"
     ? event.actor
     : "Shared user";
+  actorCell.dataset.label = "User";
   actorCell.append(actor);
 
   const activityCell = document.createElement("td");
@@ -1212,16 +1218,19 @@ function renderAuditEvent(event) {
   const summary = document.createElement("span");
   summary.className = "audit-summary";
   summary.textContent = auditActivitySummary(event);
+  activityCell.dataset.label = "Activity";
   activityCell.append(badge, summary);
 
   const recordCell = document.createElement("td");
   const record = document.createElement("span");
   record.className = "audit-record";
   record.textContent = auditRecordLabel(event);
+  recordCell.dataset.label = "Affected record";
   recordCell.append(record);
 
   const detailsCell = document.createElement("td");
   detailsCell.className = "audit-more-cell";
+  detailsCell.dataset.label = "More";
   const detailsPanel = document.createElement("details");
   detailsPanel.className = "audit-more";
   const detailsToggle = document.createElement("summary");
