@@ -12,6 +12,7 @@
  * @property {string} [confirm] label of the action button
  * @property {string} [cancel]  label of the safe button
  * @property {boolean} [danger] paint the action as destructive (default true)
+ * @property {string} [copyLabel] optional copy button shown with typed confirmation
  */
 
 let modalCount = 0;
@@ -29,6 +30,7 @@ export function confirmAction({
   danger = true,
   expectedText = "",
   inputLabel = "",
+  copyLabel = "",
 }) {
   /* Anything older than Safari 15.4 / Firefox 98 would throw on showModal();
      fall back to the browser prompt rather than leaving the click dead. */
@@ -83,7 +85,52 @@ export function confirmAction({
     typedConfirmation.autocomplete = "off";
     typedConfirmation.spellcheck = false;
     typedConfirmation.setAttribute("aria-label", caption.textContent);
-    label.append(caption, typedConfirmation);
+
+    const controlRow = document.createElement("div");
+    controlRow.className = "modal-confirm-row";
+    controlRow.append(typedConfirmation);
+
+    if (copyLabel) {
+      const copyButton = document.createElement("button");
+      copyButton.type = "button";
+      copyButton.className = "btn ghost small modal-copy-button";
+      copyButton.textContent = copyLabel;
+
+      const copyStatus = document.createElement("span");
+      copyStatus.className = "modal-copy-status";
+      copyStatus.setAttribute("role", "status");
+      copyStatus.setAttribute("aria-live", "polite");
+
+      copyButton.addEventListener("click", async () => {
+        let copied = false;
+        if (navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
+          try {
+            await navigator.clipboard.writeText(expectedText);
+            copied = true;
+          } catch { /* try the legacy selection fallback below */ }
+        }
+        if (!copied) {
+          const helper = document.createElement("textarea");
+          helper.value = expectedText;
+          helper.setAttribute("readonly", "");
+          helper.style.position = "fixed";
+          helper.style.opacity = "0";
+          document.body.append(helper);
+          helper.select();
+          try { copied = document.execCommand("copy"); }
+          catch { copied = false; }
+          helper.remove();
+        }
+        copyStatus.textContent = copied
+          ? "Copied"
+          : "Copy unavailable, select the required text and copy it manually.";
+      });
+
+      controlRow.append(copyButton);
+      label.append(caption, controlRow, copyStatus);
+    } else {
+      label.append(caption, typedConfirmation);
+    }
     body.append(label);
   }
 
