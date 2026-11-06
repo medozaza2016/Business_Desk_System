@@ -11,6 +11,7 @@ enabled = true
 
 [vars]
 SESSION_HOURS = "12"
+TURNSTILE_SITE_KEY = "0x4AAAAAAF10UKeT-7eteG2Y"
 
 [[d1_databases]]
 binding = "DB"
