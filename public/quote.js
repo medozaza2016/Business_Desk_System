@@ -313,7 +313,7 @@ async function cancelRecord() {
   if (!okay) return;
   try {
     await api(`/api/quotations/${encodeURIComponent(state.id)}`, { method: "DELETE" });
-    location.href = "/";
+    location.href = "/?view=desk";
   } catch (error) {
     toast(message(error), "error");
   }
