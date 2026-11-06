@@ -927,8 +927,6 @@ function showView(name) {
   const moduleLanding = view === "modules";
   $("companySwitch").hidden = moduleLanding || view === "invoicing";
   $("topbarRule").hidden = moduleLanding || view === "invoicing";
-  $("brandSubtitle").hidden = moduleLanding;
-  $("sessionChip").hidden = moduleLanding;
   $("modulesLink").hidden = moduleLanding;
   $("settingsLink").hidden = view === "settings";
   const url = new URL(location.href);
@@ -969,9 +967,6 @@ async function boot() {
     return;
   }
   state.status = status;
-  /* the gate collects no name, so a browser session reports the "Shared user" fallback */
-  const who = status.name && status.name !== "Shared user" ? status.name : "signed in";
-  $("sessionChip").textContent = status.signed_in ? who : "locked";
   if (!status.setup || !status.signed_in) {
     renderGate(status);
     return;
