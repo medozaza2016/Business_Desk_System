@@ -27,11 +27,17 @@ export function confirmAction({
   confirm: confirmLabel = "Confirm",
   cancel: cancelLabel = "Keep",
   danger = true,
+  expectedText = "",
+  inputLabel = "",
 }) {
   /* Anything older than Safari 15.4 / Firefox 98 would throw on showModal();
      fall back to the browser prompt rather than leaving the click dead. */
   if (typeof HTMLDialogElement === "undefined" || !HTMLDialogElement.prototype.showModal) {
-    return Promise.resolve(window.confirm(message ? `${title} ${message}` : title));
+    if (expectedText) {
+      const promptText = (message ? title + "\\n\\n" + message + "\\n\\n" : title + "\\n\\n") + "Type exactly: " + expectedText;
+      return Promise.resolve(window.prompt(promptText) === expectedText);
+    }
+    return Promise.resolve(window.confirm(message ? title + " " + message : title));
   }
 
   const suffix = String(++modalCount);
@@ -65,6 +71,22 @@ export function confirmAction({
     body.append(text);
   }
 
+  let typedConfirmation = null;
+  if (expectedText) {
+    const label = document.createElement("label");
+    label.className = "field modal-confirm-field";
+    const caption = document.createElement("span");
+    caption.className = "field-label";
+    caption.textContent = inputLabel || "Type " + expectedText + " to confirm";
+    typedConfirmation = document.createElement("input");
+    typedConfirmation.type = "text";
+    typedConfirmation.autocomplete = "off";
+    typedConfirmation.spellcheck = false;
+    typedConfirmation.setAttribute("aria-label", caption.textContent);
+    label.append(caption, typedConfirmation);
+    body.append(label);
+  }
+
   const actions = document.createElement("div");
   actions.className = "modal-actions";
 
@@ -77,6 +99,7 @@ export function confirmAction({
   okBtn.type = "button";
   okBtn.className = danger ? "btn danger" : "btn primary";
   okBtn.textContent = confirmLabel;
+  okBtn.disabled = Boolean(expectedText);
 
   actions.append(cancelBtn, okBtn);
   card.append(body, actions);
@@ -96,6 +119,11 @@ export function confirmAction({
 
     cancelBtn.addEventListener("click", () => finish(false));
     okBtn.addEventListener("click", () => finish(true));
+    if (typedConfirmation) {
+      typedConfirmation.addEventListener("input", () => {
+        okBtn.disabled = typedConfirmation.value !== expectedText;
+      });
+    }
 
     /* Escape must not close the dialog before we know the answer */
     dialog.addEventListener("cancel", (event) => {
@@ -111,6 +139,7 @@ export function confirmAction({
     document.body.append(dialog);
     dialog.showModal();
     /* focus the safe choice so a stray Enter never deletes anything */
-    cancelBtn.focus();
+    if (typedConfirmation) typedConfirmation.focus();
+    else cancelBtn.focus();
   });
 }
