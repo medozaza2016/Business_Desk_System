@@ -1,5 +1,5 @@
 /* Challenger Quotation Desk — client
-   No framework, no build step. Views: gate → modules → quotation workspace / settings / invoicing preview. */
+   No framework, no build step. Views: gate → modules → quotation workspace / settings / vehicle agreements preview. */
 
 import { confirmAction } from "./dialog.js";
 
@@ -217,7 +217,7 @@ function showGate() {
   $("modulesView").hidden = true;
   $("workspaceView").hidden = true;
   $("settingsView").hidden = true;
-  $("invoicePreviewView").hidden = true;
+  $("agreementsPreviewView").hidden = true;
   $("gate").hidden = false;
   $("gatePasscode").focus();
 }
@@ -1429,24 +1429,24 @@ function showSettingsPane(name, { remember = true } = {}) {
 }
 
 function showView(name) {
-  const view = ["desk", "settings", "modules", "invoicing"].includes(name) ? name : "modules";
+  const view = ["desk", "settings", "modules", "agreements"].includes(name) ? name : "modules";
   state.settingsOpen = view === "settings";
   $("topbar").hidden = false;
   $("gate").hidden = true;
   $("modulesView").hidden = view !== "modules";
   $("workspaceView").hidden = view !== "desk";
   $("settingsView").hidden = view !== "settings";
-  $("invoicePreviewView").hidden = view !== "invoicing";
+  $("agreementsPreviewView").hidden = view !== "agreements";
   $("appVersionFooter").hidden = view === "modules";
   const moduleLanding = view === "modules";
-  $("companySwitch").hidden = moduleLanding || view === "invoicing";
-  $("topbarRule").hidden = moduleLanding || view === "invoicing";
+  $("companySwitch").hidden = moduleLanding || view === "agreements";
+  $("topbarRule").hidden = moduleLanding || view === "agreements";
   $("modulesLink").hidden = moduleLanding;
   $("settingsLink").hidden = view === "settings";
   const url = new URL(location.href);
   if (view === "settings") url.searchParams.set("view", "settings");
   else if (view === "desk") url.searchParams.set("view", "desk");
-  else if (view === "invoicing") url.searchParams.set("view", "invoicing");
+  else if (view === "agreements") url.searchParams.set("view", "agreements");
   else url.searchParams.delete("view");
   if (view !== "settings") url.searchParams.delete("pane");
   history.replaceState(null, "", url);
@@ -1508,15 +1508,15 @@ async function boot() {
   const requestedView = new URLSearchParams(location.search).get("view");
   if (requestedView === "settings") await openSettings();
   else if (requestedView === "desk") showView("desk");
-  else if (requestedView === "invoicing") showView("invoicing");
+  else if (requestedView === "agreements" || requestedView === "invoicing") showView("agreements");
   else showView("modules");
 }
 
 function openModuleCard(card) {
   if (card.dataset.module === "quotations") {
     showView("desk");
-  } else if (card.dataset.module === "invoicing") {
-    showView("invoicing");
+  } else if (card.dataset.module === "agreements") {
+    showView("agreements");
   }
 }
 
