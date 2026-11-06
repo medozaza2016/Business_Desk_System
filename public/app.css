@@ -431,6 +431,32 @@ textarea {
 
 .prefix input:focus { box-shadow: none; }
 
+.prefix.read-only-number {
+  border-color: var(--line);
+  background: #f1f3f6;
+  cursor: not-allowed;
+}
+
+.prefix.read-only-number .prefix-tag {
+  background: #e2e7ee;
+  color: var(--ink-soft);
+  letter-spacing: .08em;
+  font-size: 10px;
+}
+
+.prefix input[readonly] {
+  background: #f1f3f6;
+  color: var(--ink);
+  font-weight: 700;
+  cursor: not-allowed;
+  caret-color: transparent;
+}
+
+.prefix input[readonly]:focus {
+  outline: none;
+  box-shadow: none;
+}
+
 .rail-note {
   margin: 14px 0 0;
   padding-top: 12px;

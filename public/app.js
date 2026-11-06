@@ -178,7 +178,6 @@ const activeCompany = () => state.companies.find((c) => c.id === state.companyId
 
 function paintCompanyChrome() {
   const company = activeCompany();
-  $("prefixTag").textContent = company?.quotation_prefix || "QA-";
   $("currencyTag").textContent = company?.currency || "AED";
   if (company) $("ledgerTitle").textContent = company.name;
   const csv = company ? `/api/export/quotations.csv?company_id=${encodeURIComponent(company.id)}` : "#";
@@ -231,17 +230,28 @@ function switchCompany(id) {
 
 /* -------------------------------------------------------------- numbering --- */
 
+let nextNumberRequest = 0;
+
 async function refreshNextNumber() {
+  const requestId = ++nextNumberRequest;
+  const numberField = $("quoteNumber");
   const company = activeCompany();
-  if (!company) { $("numberHint").textContent = "auto"; return; }
+  numberField.value = "";
+  if (!company) {
+    $("numberHint").textContent = "auto · select company";
+    return;
+  }
   const date = $("quoteDate").value || todayLocal();
+  $("numberHint").textContent = "auto · calculating…";
   try {
     const data = await api(`/api/quotations/next-number?company_id=${encodeURIComponent(company.id)}&date=${encodeURIComponent(date)}`);
-    const serial = data.quote_number.replace(company.quotation_prefix || "QA-", "");
-    $("quoteNumber").placeholder = serial;
+    if (requestId !== nextNumberRequest) return;
+    numberField.value = data.quote_number;
     $("numberHint").textContent = `auto · ${data.quote_number}`;
   } catch {
-    $("numberHint").textContent = "auto";
+    if (requestId !== nextNumberRequest) return;
+    numberField.value = "";
+    $("numberHint").textContent = "auto · unavailable";
   }
 }
 
@@ -334,7 +344,6 @@ async function submitQuote(event) {
   event.preventDefault();
   const company = activeCompany();
   if (!company) { toast("Add a company first in Settings.", "error"); return; }
-  const serial = $("quoteNumber").value.trim();
   const payload = {
     company_id: company.id,
     quote_date: $("quoteDate").value || todayLocal(),
@@ -344,7 +353,6 @@ async function submitQuote(event) {
     comments: $("comments").value.trim(),
     amount: $("amount").value.trim(),
   };
-  if (serial) payload.quote_number = (company.quotation_prefix || "QA-") + serial;
   if (!payload.model || !payload.year || !payload.chassis || !payload.amount) {
     toast("Model, year, chassis and value are required.", "error");
     return;
@@ -354,7 +362,7 @@ async function submitQuote(event) {
   try {
     const data = await api("/api/quotations", { method: "POST", body: payload });
     toast(`Saved ${data.quotation.quote_number}`);
-    for (const id of ["quoteNumber", "model", "year", "chassis", "comments", "amount"]) $(id).value = "";
+    for (const id of ["model", "year", "chassis", "comments", "amount"]) $(id).value = "";
     $("model").focus();
     await refreshNextNumber();
     await loadQuotes();
