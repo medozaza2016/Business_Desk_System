@@ -263,7 +263,6 @@ const activeCompany = () => state.companies.find((c) => c.id === state.companyId
 function paintCompanyChrome() {
   const company = activeCompany();
   $("currencyTag").textContent = company?.currency || "AED";
-  if (company) $("ledgerTitle").textContent = company.name;
   const csv = company ? `/api/export/quotations.csv?company_id=${encodeURIComponent(company.id)}` : "#";
   $("csvLink").href = csv;
   $("csvLink2").href = csv;
@@ -356,14 +355,6 @@ function renderQuotes() {
   const company = activeCompany();
   const isDeleted = state.quoteView === "deleted";
   const total = state.quotes.length;
-  const suffix = state.search ? ` matching “${state.search}”` : "";
-  const order = state.sort === "date" ? "newest date first" : "highest number first";
-  $("ledgerTitle").textContent = isDeleted
-    ? `Deleted · ${company?.name || "quotations"}`
-    : (company?.name || "Quotations");
-  $("ledgerMeta").textContent = company
-    ? `${total} ${isDeleted ? "deleted " : ""}record${total === 1 ? "" : "s"}${suffix} · ${order} · prefix ${company.quotation_prefix || "QA-"} · currency ${company.currency || "AED"}`
-    : "No company configured yet.";
   $("emptyState").hidden = total > 0;
   $("emptyState").innerHTML = isDeleted
     ? "<b>No deleted quotations</b> Deleted records for this company will appear here."
