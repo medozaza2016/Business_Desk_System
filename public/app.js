@@ -1413,6 +1413,14 @@ async function boot() {
   else showView("modules");
 }
 
+function openModuleCard(card) {
+  if (card.dataset.module === "quotations") {
+    showView("desk");
+  } else if (card.dataset.module === "invoicing") {
+    showView("invoicing");
+  }
+}
+
 function bind() {
   $("gateForm").addEventListener("submit", submitGate);
   $("quoteForm").addEventListener("submit", submitQuote);
@@ -1420,8 +1428,19 @@ function bind() {
   $("quoteDate").addEventListener("change", refreshNextNumber);
   $("logoutBtn").addEventListener("click", () => signOut());
   $("modulesLink").addEventListener("click", () => showView("modules"));
-  $("openQuotations").addEventListener("click", () => showView("desk"));
-  $("openInvoicingPreview").addEventListener("click", () => showView("invoicing"));
+  const moduleGrid = document.querySelector(".module-picker-grid");
+  moduleGrid.addEventListener("click", (event) => {
+    const card = event.target.closest(".module-choice[data-module]");
+    if (card && moduleGrid.contains(card)) openModuleCard(card);
+  });
+  moduleGrid.addEventListener("keydown", (event) => {
+    const card = event.target.closest(".module-choice[data-module]");
+    if (!card || !moduleGrid.contains(card)) return;
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      openModuleCard(card);
+    }
+  });
   $("backToModules").addEventListener("click", () => showView("modules"));
   $("previewBackAction").addEventListener("click", () => showView("modules"));
   $("companyForm").addEventListener("submit", saveCompany);
