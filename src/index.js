@@ -645,16 +645,32 @@ const handleCompanyPermanentDelete = async (request, env, session, companyId) =>
     audit_events_retained: true,
   };
 
-  await env.DB.batch([
+  const results = await env.DB.batch([
     env.DB.prepare(
-      "INSERT INTO audit_events(id,actor,action,entity,entity_id,details_json) VALUES(?,?,?,?,?,?)"
-    ).bind(auditId, String(session.name || "shared"), "company.permanently_deleted", "company", companyId, JSON.stringify(details)),
-    env.DB.prepare("DELETE FROM quotation_scans WHERE company_id=?").bind(companyId),
-    env.DB.prepare("DELETE FROM quotations WHERE company_id=?").bind(companyId),
-    env.DB.prepare("DELETE FROM templates WHERE company_id=?").bind(companyId),
-    env.DB.prepare("DELETE FROM quote_sequences WHERE company_id=?").bind(companyId),
+      "INSERT INTO audit_events(id,actor,action,entity,entity_id,details_json) " +
+      "SELECT ?,?,?,?,?,? WHERE EXISTS (SELECT 1 FROM companies WHERE id=?)"
+    ).bind(auditId, String(session.name || "shared"), "company.permanently_deleted", "company", companyId, JSON.stringify(details), companyId),
+    env.DB.prepare(
+      "DELETE FROM quotation_scans WHERE company_id=? " +
+      "AND EXISTS (SELECT 1 FROM companies WHERE id=?)"
+    ).bind(companyId, companyId),
+    env.DB.prepare(
+      "DELETE FROM quotations WHERE company_id=? " +
+      "AND EXISTS (SELECT 1 FROM companies WHERE id=?)"
+    ).bind(companyId, companyId),
+    env.DB.prepare(
+      "DELETE FROM templates WHERE company_id=? " +
+      "AND EXISTS (SELECT 1 FROM companies WHERE id=?)"
+    ).bind(companyId, companyId),
+    env.DB.prepare(
+      "DELETE FROM quote_sequences WHERE company_id=? " +
+      "AND EXISTS (SELECT 1 FROM companies WHERE id=?)"
+    ).bind(companyId, companyId),
     env.DB.prepare("DELETE FROM companies WHERE id=?").bind(companyId),
   ]);
+  if (!results[5]?.meta || results[5].meta.changes === 0) {
+    return json({ error: "company_not_found" }, 404);
+  }
 
   let assetCleanupFailed = 0;
   let failedAssetKeys = [];
@@ -1201,9 +1217,10 @@ const handleQuotationRestore = async (env, ctx, session, id) => {
   ).bind(id).first();
   if (!row) return json({ error: "quotation_not_found" }, 404);
   if (!row.deleted_at) return json({ error: "quotation_not_deleted" }, 409);
-  await env.DB.prepare(
+  const result = await env.DB.prepare(
     "UPDATE quotations SET deleted_at=NULL,updated_at=CURRENT_TIMESTAMP WHERE id=? AND deleted_at IS NOT NULL"
   ).bind(id).run();
+  if (!result.meta || result.meta.changes === 0) return json({ error: "quotation_not_deleted" }, 409);
   audit(env, ctx, session.name, "quotation.restored", "quotation", id, {
     quote_number: row.quote_number, company_id: row.company_id,
   });
@@ -1233,13 +1250,20 @@ const handleQuotationPermanentDelete = async (request, env, session, id) => {
     signed_scan_deleted: Boolean(scan?.r2_key),
     permanent: true,
   };
-  await env.DB.batch([
+  const results = await env.DB.batch([
     env.DB.prepare(
-      "INSERT INTO audit_events(id,actor,action,entity,entity_id,details_json) VALUES(?,?,?,?,?,?)"
-    ).bind(auditId, String(session.name || "shared"), "quotation.permanently_deleted", "quotation", id, JSON.stringify(details)),
-    env.DB.prepare("DELETE FROM quotation_scans WHERE quotation_id=?").bind(id),
+      "INSERT INTO audit_events(id,actor,action,entity,entity_id,details_json) " +
+      "SELECT ?,?,?,?,?,? WHERE EXISTS (SELECT 1 FROM quotations WHERE id=? AND deleted_at IS NOT NULL)"
+    ).bind(auditId, String(session.name || "shared"), "quotation.permanently_deleted", "quotation", id, JSON.stringify(details), id),
+    env.DB.prepare(
+      "DELETE FROM quotation_scans WHERE quotation_id=? " +
+      "AND EXISTS (SELECT 1 FROM quotations WHERE id=? AND deleted_at IS NOT NULL)"
+    ).bind(id, id),
     env.DB.prepare("DELETE FROM quotations WHERE id=? AND deleted_at IS NOT NULL").bind(id),
   ]);
+  if (!results[2]?.meta || results[2].meta.changes === 0) {
+    return json({ error: "quotation_must_be_deleted_first" }, 409);
+  }
 
   let assetCleanupFailed = false;
   if (scan?.r2_key && env.ASSETS) {
