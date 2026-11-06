@@ -1460,8 +1460,21 @@ async function openSettings(pane) {
 }
 
 async function signOut(message) {
+  const previousStatus = state.status || {};
   try { await api("/api/auth/logout", { method: "POST" }); } catch { /* already gone */ }
-  state.status = { setup: true, signed_in: false, session_hours: state.status?.session_hours || 12 };
+
+  let freshStatus = null;
+  try {
+    freshStatus = await api("/api/auth/status", { cache: "no-store" });
+  } catch { /* use the last known public authentication configuration */ }
+
+  state.status = {
+    ...(freshStatus || previousStatus),
+    setup: freshStatus?.setup ?? previousStatus.setup ?? true,
+    signed_in: false,
+    session_hours: freshStatus?.session_hours || previousStatus.session_hours || 12,
+    turnstile_site_key: freshStatus?.turnstile_site_key || previousStatus.turnstile_site_key || null,
+  };
   state.quotes = [];
   state.templates = [];
   state.templateEditId = null;
