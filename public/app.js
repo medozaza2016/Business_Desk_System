@@ -271,6 +271,11 @@ function renderQuotes() {
 
   for (const quote of state.quotes) {
     const row = document.createElement("tr");
+    /* The line itself is the way in: print, complete and cancel all live on the
+       record, so the ledger carries no buttons at all. The number stays a real
+       link underneath so the keyboard and screen readers keep their own door. */
+    row.className = "row-open";
+    row.dataset.href = `/quote?id=${encodeURIComponent(quote.id)}`;
 
     const numberCell = document.createElement("td");
     numberCell.className = "num";
@@ -300,32 +305,6 @@ function renderQuotes() {
 
     row.appendChild(rowCell(`${company?.currency || "AED"} ${quote.amount}`, "money", "Estimated value"));
 
-    const actions = document.createElement("td");
-    actions.className = "row-actions";
-    const open = document.createElement("a");
-    open.href = `/quote?id=${encodeURIComponent(quote.id)}`;
-    open.textContent = "Open";
-    const separator = document.createElement("span");
-    separator.className = "sep";
-    separator.textContent = "/";
-    const print = document.createElement("a");
-    print.href = `/api/quotations/${encodeURIComponent(quote.id)}/print?print=1`;
-    print.target = "_blank";
-    print.rel = "noopener";
-    print.textContent = "Print";
-    const separator2 = separator.cloneNode(true);
-    const toggle = document.createElement("button");
-    toggle.type = "button";
-    toggle.textContent = quote.status === "completed" ? "Reopen" : "Complete";
-    toggle.addEventListener("click", () => toggleQuoteStatus(quote));
-    const separator3 = separator.cloneNode(true);
-    const remove = document.createElement("button");
-    remove.type = "button";
-    remove.textContent = "Cancel";
-    remove.addEventListener("click", () => cancelQuote(quote));
-    actions.append(open, separator, print, separator2, toggle, separator3, remove);
-    row.appendChild(actions);
-
     body.appendChild(row);
   }
 }
@@ -347,53 +326,6 @@ async function loadQuotes() {
     renderQuotes();
   } catch (error) {
     if (error.status === 401) return signOut("Your session expired.");
-    toast(humanError(error), "error");
-  }
-}
-
-/** Complete or reopen straight from the ledger; completing needs the signed page. */
-async function toggleQuoteStatus(quote) {
-  const completed = quote.status === "completed";
-  if (!completed && !quote.has_scan) {
-    /* the scan lives on the record page, so that is where this has to happen */
-    toast("Scan the signed page on the record first.", "error");
-    location.href = `/quote?id=${encodeURIComponent(quote.id)}`;
-    return;
-  }
-  const okay = await confirmAction({
-    title: completed ? `Reopen ${quote.quote_number}?` : `Mark ${quote.quote_number} completed?`,
-    message: completed
-      ? "The record becomes editable again."
-      : "The record keeps its signed page and its numbers are frozen.",
-    confirm: completed ? "Reopen" : "Mark completed",
-    cancel: "Keep",
-    danger: false,
-  });
-  if (!okay) return;
-  try {
-    await api(`/api/quotations/${encodeURIComponent(quote.id)}/status`, {
-      method: "PATCH",
-      body: { status: completed ? "issued" : "completed" },
-    });
-    toast(completed ? `${quote.quote_number} reopened` : `${quote.quote_number} completed`);
-    await loadQuotes();
-  } catch (error) {
-    toast(humanError(error), "error");
-  }
-}
-
-async function cancelQuote(quote) {
-  const okay = await confirmAction({
-    title: `Cancel quotation ${quote.quote_number}?`,
-    message: "It will be removed from the desk.",
-    confirm: "Cancel quotation",
-  });
-  if (!okay) return;
-  try {
-    await api(`/api/quotations/${encodeURIComponent(quote.id)}`, { method: "DELETE" });
-    toast(`Cancelled ${quote.quote_number}`);
-    await loadQuotes();
-  } catch (error) {
     toast(humanError(error), "error");
   }
 }
@@ -1094,6 +1026,18 @@ function bind() {
     event.preventDefault();
     state.search = $("searchInput").value.trim();
     loadQuotes();
+  });
+
+  /* The ledger line is the door: print, complete and cancel all live on the
+     record, so a click anywhere on the line opens it. The number link keeps
+     working for the keyboard, and modifier clicks and text selection are left
+     to the browser. */
+  $("quotesBody").addEventListener("click", (event) => {
+    if (event.target.closest("a, button")) return;
+    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    if (window.getSelection()?.toString()) return;
+    const row = event.target.closest("tr[data-href]");
+    if (row) location.href = row.dataset.href;
   });
 
   document.addEventListener("keydown", (event) => {

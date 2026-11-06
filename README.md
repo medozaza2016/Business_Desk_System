@@ -43,7 +43,9 @@ Live: <https://quote.ahmedmohamed.org>
 - **Workflow state**: a quotation is *issued* → *signed* (a scan exists) → *completed*. Completing needs
   the signed page, freezes the numbers, and stamps the record; reopening thaws it.
 - The ledger is ordered by quotation number (highest first) with `?sort=date` for the calendar order, and
-  each row shows whether the paperwork is unsigned, signed or completed.
+  each row shows whether the paperwork is unsigned, signed or completed. A row carries no buttons: the
+  whole line opens the record (the number inside stays a real link, so the keyboard keeps its own route),
+  and print, complete and cancel live on that record page.
 
 ## Quick start
 

@@ -222,6 +222,10 @@ textarea {
 .btn.block { width: 100%; }
 .btn[disabled] { opacity: .45; cursor: not-allowed; }
 
+/* A glyph inside a button rides the label: it keeps its size and never
+   shrinks when the label wraps on a narrow screen. */
+.btn .icon { width: 15px; height: 15px; flex: none; }
+
 /* ------------------------------------------------------------ auth gate --- */
 
 .gate {
@@ -519,22 +523,10 @@ tbody tr:last-child td { border-bottom: 0; }
 
 th.money-head, td.money { text-align: right; }
 
-.row-actions { text-align: right; white-space: nowrap; }
-
-.row-actions a, .row-actions button {
-  font-size: 11px;
-  letter-spacing: .08em;
-  text-transform: uppercase;
-  font-weight: 700;
-  color: var(--ink-soft);
-  background: none;
-  border: 0;
-  padding: 0 2px;
-  cursor: pointer;
-}
-
-.row-actions a:hover, .row-actions button:hover { color: var(--red); }
-.row-actions .sep { color: var(--line); padding: 0 6px; }
+/* The line is the door: the cursor says a click opens the record, and the
+   number inside stays a real link so the keyboard keeps its own route. */
+tbody tr.row-open { cursor: pointer; }
+tbody tr.row-open:hover td.num a { color: var(--red); border-bottom-color: var(--red); }
 
 .empty {
   margin: 0;
@@ -848,6 +840,10 @@ body:has(dialog.modal[open]) { overflow: hidden; }
 
 .card-head h2 { margin: 0; font-size: 13px; letter-spacing: .1em; text-transform: uppercase; }
 
+/* the head keeps its tools together on the right: chip, then the action */
+.card-head-tools { display: flex; align-items: center; gap: 8px; }
+.card-head-tools .btn { white-space: nowrap; }
+
 .card-body { padding: 18px; }
 
 /* ------------------------------------------------------------ brand logo --- */
@@ -1100,10 +1096,9 @@ hr.rule { border: 0; border-top: 1px dashed var(--line); margin: 16px 0; }
     grid-template-areas:
       "num num"
       "vehicle vehicle"
-      "date money"
-      "actions actions";
+      "date money";
     gap: 2px 12px;
-    padding: 12px 14px 6px;
+    padding: 12px 14px;
     background: var(--sheet);
     border: 1px solid var(--line);
     border-radius: var(--radius);
@@ -1130,10 +1125,9 @@ hr.rule { border: 0; border-top: 1px dashed var(--line); margin: 16px 0; }
     color: var(--muted);
   }
 
-  /* the number is the card title and the actions are self-evident */
+  /* the number is the card title, so it needs no caption */
   .table-wrap td.num::before,
-  .table-wrap td.vehicle::before,
-  .table-wrap td.row-actions::before { display: none; }
+  .table-wrap td.vehicle::before { display: none; }
 
   .table-wrap td.num {
     grid-area: num;
@@ -1158,22 +1152,6 @@ hr.rule { border: 0; border-top: 1px dashed var(--line); margin: 16px 0; }
     font-size: 14px;
   }
 
-  .table-wrap td.row-actions {
-    grid-area: actions;
-    display: flex;
-    align-items: center;
-    gap: 18px;
-    margin-top: 8px;
-    padding-top: 4px;
-    border-top: 1px solid var(--line-soft);
-  }
-
-  /* "/" separators are noise once the links are spaced apart */
-  .table-wrap td.row-actions .sep { display: none; }
-
-  .table-wrap td.row-actions a,
-  .table-wrap td.row-actions button { padding: 10px 0; font-size: 11px; }
-
   /* the empty state loses the table's frame, so it needs its own */
   .table-wrap .empty {
     background: var(--sheet);
@@ -1193,6 +1171,10 @@ hr.rule { border: 0; border-top: 1px dashed var(--line); margin: 16px 0; }
   .search input { width: 100%; }
   .ledger-actions { width: 100%; }
   .logo-field { grid-template-columns: 1fr; }
+
+  /* the sheet head keeps its action on one line: "· A4" already names the paper */
+  .preview-card .card-head .chip { display: none; }
+  .preview-card .card-head h2 { white-space: nowrap; }
 
   /* iOS zooms into any focused control below 16px, which then hides the field label */
   .field input, .field textarea, .prefix input, .search input, select { font-size: 16px; }

@@ -83,8 +83,9 @@ A4 sheet. Replace it with the real artwork (A4 @ 150–300 dpi, header/footer al
 ## Print behaviour
 
 - The record page embeds `/api/quotations/:id/print` in an iframe and scales it to fit; no PDF is stored.
-- *Print / PDF* opens `…/print?print=1`, which appends a four-line autoprint script and allows exactly
-  that script via a `sha256` CSP hash. Browser → *Save as PDF* is the export path.
+- *Print / PDF*, in the *Print sheet · A4* card head, opens `…/print?print=1`, which appends a four-line
+  autoprint script and allows exactly that script via a `sha256` CSP hash. Browser → *Save as PDF* is the
+  export path.
 - Company templates can never execute JavaScript: `script-src` allows only the Worker's hash.
 
 ## Signed copies and share links
@@ -112,7 +113,7 @@ A4 sheet. Replace it with the real artwork (A4 @ 150–300 dpi, header/footer al
   sheet (mobile) or to `wa.me` plus a download (desktop). Nothing is sent without the operator picking a
   chat, and no WhatsApp credentials are stored anywhere.
 - Workflow: completing a record requires a signed page and freezes the numbers. Reopen it from the record
-  header or the ledger's *Reopen* action before correcting anything.
+  header (*Mark completed* / *Reopen*) before correcting anything.
 
 ## Troubleshooting
 

@@ -68,8 +68,9 @@ so the decisions and their reasons stay next to the code.
   measurements, send controls, completion stamp. The edit form freezes when completed.
   Three ways in share one route: *Scan the signed page*, *Upload a photo* (the same correction without
   the camera) and *Upload a PDF*; a PDF replaces the picture with a document tile.
-- `public/app.js` + `index.html` — ledger sort switch, state chip per row, Complete/Reopen action,
-  and a *WhatsApp hand-off* settings pane.
+- `public/app.js` + `index.html` — ledger sort switch, state chip per row, a clickable line that opens the
+  record (no per-row buttons: print, complete and cancel live on the record), and a *WhatsApp hand-off*
+  settings pane.
 - `public/app.css` — signed card, segmented switch, scanner surface, settings choice list; responsive at
   1180 / 980 / 760 / 640 / 480.
 

@@ -212,10 +212,10 @@ function paintSendMode() {
   }
   const hasLink = Boolean(state.quote?.share_path);
   if (wanted === "link") {
-    $("sendBtn").textContent = hasLink ? "Send the link on WhatsApp" : "Create a link and send";
+    $("sendLabel").textContent = hasLink ? "Send the link on WhatsApp" : "Create a link and send";
     $("signedHint").textContent = "The customer gets a private page with the figures and the signed page. Rotate the link if it ever leaks.";
   } else {
-    $("sendBtn").textContent = "Send the signed file on WhatsApp";
+    $("sendLabel").textContent = "Send the signed file on WhatsApp";
     $("signedHint").textContent = "WhatsApp opens with the page already attached and you choose the chat. On a computer the picture downloads instead, ready to attach.";
   }
 }
@@ -244,8 +244,6 @@ function paint(quote) {
     ? "This record is completed, so its numbers are frozen. Reopen it in the header to make changes."
     : "The sheet is rendered from the template snapshot captured when this record was issued. Later template versions never change an existing quotation.";
 
-  const sheet = `/api/quotations/${encodeURIComponent(quote.id)}/print`;
-  $("previewTab").href = sheet;
   refreshPreview();
 }
 
