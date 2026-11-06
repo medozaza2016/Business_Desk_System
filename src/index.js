@@ -899,17 +899,17 @@ const handleQuotationCreate = async (request, env, ctx, session) => {
   if (!company) return json({ error: "company_not_found" }, 404);
   const period = date.slice(0, 4);
   const prefix = company.quotation_prefix || "QA-";
-  let quoteNumber = text(body.quote_number, 60);
-  if (!quoteNumber) {
-    for (let attempt = 0; attempt < 8 && !quoteNumber; attempt++) {
-      const serial = await allocateSerial(env, company.id, period);
-      const candidate = `${prefix}${period}-${String(serial).padStart(5, "0")}`;
-      const taken = await env.DB.prepare("SELECT 1 AS taken FROM quotations WHERE company_id=? AND quote_number=?")
-        .bind(company.id, candidate).first();
-      if (!taken) quoteNumber = candidate;
-    }
-    if (!quoteNumber) return json({ error: "numbering_exhausted" }, 409);
+  // New quotations always receive a server-allocated number. Never trust a
+  // client-supplied quote_number, even if a caller bypasses the read-only UI.
+  let quoteNumber = "";
+  for (let attempt = 0; attempt < 8 && !quoteNumber; attempt++) {
+    const serial = await allocateSerial(env, company.id, period);
+    const candidate = `${prefix}${period}-${String(serial).padStart(5, "0")}`;
+    const taken = await env.DB.prepare("SELECT 1 AS taken FROM quotations WHERE company_id=? AND quote_number=?")
+      .bind(company.id, candidate).first();
+    if (!taken) quoteNumber = candidate;
   }
+  if (!quoteNumber) return json({ error: "numbering_exhausted" }, 409);
   const template = await env.DB.prepare(
     "SELECT id,html FROM templates WHERE company_id=? AND active=1 ORDER BY version DESC LIMIT 1"
   ).bind(company.id).first();
