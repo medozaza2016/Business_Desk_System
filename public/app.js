@@ -131,7 +131,7 @@ function showGate() {
 function renderGate(status) {
   const setupMode = !status.setup;
   state.status = status;
-  $("gateEyebrow").textContent = setupMode ? "First run" : "Challenger quotation desk";
+  $("gateEyebrow").textContent = setupMode ? "First run" : "Quotation Desk";
   $("gateTitle").textContent = setupMode ? "Set the desk passcode" : "Enter the passcode";
   $("gateLede").textContent = setupMode
     ? "Choose the passcode your team will share. It is hashed before it touches the database and can be rotated later."
