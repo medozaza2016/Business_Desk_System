@@ -3239,3 +3239,112 @@ dialog.scanner::backdrop { background: #14120ee6; }
   width: 42px;
   height: 42px;
 }
+
+
+/* Whole-card interaction for module selection */
+.module-choice {
+  cursor: pointer;
+  outline: none;
+  transition:
+    transform .18s ease,
+    border-color .18s ease,
+    box-shadow .18s ease,
+    background-color .18s ease;
+}
+
+.module-choice-available:hover {
+  transform: translateY(-4px);
+  border-color: var(--red);
+  box-shadow: 0 12px 28px #11111112, 0 3px 8px #1111110a;
+}
+
+.module-choice-coming:hover {
+  transform: translateY(-4px);
+  border-color: #8aa994;
+  box-shadow: 0 12px 28px #11111112, 0 3px 8px #1111110a;
+}
+
+.module-choice:focus-visible {
+  outline: 3px solid var(--red);
+  outline-offset: 4px;
+  border-color: var(--red);
+}
+
+.module-choice:active {
+  transform: translateY(-1px) scale(.997);
+  box-shadow: 0 3px 10px #11111112;
+}
+
+.module-choice-hint {
+  display: flex;
+  width: 100%;
+  min-height: 42px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: auto;
+  padding-top: 13px;
+  border-top: 1px solid var(--line-soft);
+  color: var(--ink-soft);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: .065em;
+  text-transform: uppercase;
+}
+
+.module-choice-arrow {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 27px;
+  height: 27px;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  color: var(--ink);
+  font-size: 16px;
+  font-weight: 400;
+  line-height: 1;
+  transition:
+    transform .18s ease,
+    background-color .18s ease,
+    border-color .18s ease,
+    color .18s ease;
+}
+
+.module-choice-available:hover .module-choice-arrow,
+.module-choice-available:focus-visible .module-choice-arrow {
+  transform: translate(2px, -2px);
+  border-color: var(--red);
+  background: var(--red);
+  color: #fff;
+}
+
+.module-choice-coming:hover .module-choice-arrow,
+.module-choice-coming:focus-visible .module-choice-arrow {
+  transform: translate(2px, -2px);
+  border-color: #245d37;
+  background: #245d37;
+  color: #fff;
+}
+
+.module-choice:hover .module-choice-icon,
+.module-choice:focus-visible .module-choice-icon {
+  transform: translateY(-2px) scale(1.04);
+}
+
+.module-choice-icon {
+  transition: transform .18s ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .module-choice,
+  .module-choice-arrow,
+  .module-choice-icon {
+    transition: none;
+  }
+  .module-choice-available:hover,
+  .module-choice-coming:hover,
+  .module-choice:active {
+    transform: none;
+  }
+}
