@@ -616,10 +616,11 @@ const handleCompanyPermanentDelete = async (request, env, session, companyId) =>
     env.DB.prepare("SELECT COUNT(*) AS n FROM quote_sequences WHERE company_id=?").bind(companyId).first(),
     env.DB.prepare("SELECT r2_key FROM quotation_scans WHERE company_id=?").bind(companyId).all(),
   ]);
-  const assetKeys = [...new Set([
+  const companyAssetKeys = [...new Set([
     company.logo_key, company.letterhead_key, company.font_key,
-    ...(scanRows.results || []).map((row) => row.r2_key),
   ].filter(Boolean))];
+  const scanAssetKeys = [...new Set((scanRows.results || []).map((row) => row.r2_key).filter(Boolean))];
+  const assetKeys = [...new Set([...companyAssetKeys, ...scanAssetKeys])];
   if (assetKeys.length && !env.ASSETS) return json({ error: "storage_unavailable" }, 503);
 
   const quotationsDeleted = Number(quoteCount?.n || 0);
@@ -634,7 +635,7 @@ const handleCompanyPermanentDelete = async (request, env, session, companyId) =>
     templates_deleted: templatesDeleted,
     numbering_sequences_deleted: sequencesDeleted,
     signed_scans_deleted: scansDeleted,
-    company_files_deleted: assetKeys.length - scansDeleted,
+    company_files_deleted: companyAssetKeys.length,
     audit_events_retained: true,
   };
 
