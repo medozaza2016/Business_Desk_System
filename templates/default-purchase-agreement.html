@@ -1,0 +1,409 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="light">
+<title>Vehicle Purchase Agreement {{agreement_number}}</title>
+<style>
+  /* A4 purchase agreement. Every value is a flat {{token}} so the Worker can hydrate the
+     document without any scripting; the one conditional in the layout is the
+     intermediary band, switched by the intermediary_state class on <body>
+     (has-intermediary / no-intermediary). */
+  @page { size: A4 portrait; margin: 0; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; width: 210mm; min-height: 297mm; }
+  body {
+    color: #111;
+    background: #e8eaed;
+    font-family: Arial, "Segoe UI", Tahoma, "DejaVu Sans", sans-serif;
+    font-size: 3.1mm;
+    line-height: 1.45;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  .sheet {
+    position: relative;
+    width: 210mm;
+    min-height: 297mm;
+    margin: 0 auto;
+    padding: 12mm 14mm 18mm;
+    background: #fff;
+    overflow: hidden;
+  }
+  .sheet::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: url("{{letterhead_url}}") center/cover no-repeat;
+    opacity: .06;
+    pointer-events: none;
+  }
+  .sheet > * { position: relative; }
+
+  /* ---------------------------------------------------------------- header --- */
+  .head {
+    display: grid;
+    grid-template-columns: 26mm 1fr auto;
+    align-items: center;
+    gap: 5mm;
+    padding-bottom: 3.5mm;
+    border-bottom: .9mm solid #c51e25;
+  }
+  /* No logo uploaded yet: the mark drops out and the names take the space. */
+  body.no-logo .head { grid-template-columns: 1fr auto; }
+  body.no-logo .mark { display: none; }
+  .mark { height: 22mm; display: flex; align-items: center; justify-content: center; }
+  .mark img { max-width: 26mm; max-height: 22mm; object-fit: contain; }
+  .legal-en { font-size: 4.6mm; font-weight: 900; letter-spacing: .1mm; line-height: 1.15; }
+  .legal-en .accent { color: #c51e25; }
+  .legal-ar {
+    direction: rtl;
+    font-size: 4mm;
+    font-weight: 900;
+    line-height: 1.35;
+    margin-top: .6mm;
+  }
+  .legal-ar .accent { color: #c51e25; }
+  .contact {
+    text-align: right;
+    font-size: 2.7mm;
+    line-height: 1.5;
+    color: #4a4843;
+    white-space: nowrap;
+  }
+
+  /* ----------------------------------------------------------------- title --- */
+  .title-bar {
+    display: grid;
+    grid-template-columns: 1fr 1.4mm 1fr;
+    align-items: center;
+    gap: 4mm;
+    margin-top: 5mm;
+    padding: 2.6mm 5mm;
+    background: #ececec;
+    border-radius: 4mm;
+    text-align: center;
+  }
+  .title-en { font-size: 5.4mm; font-weight: 900; letter-spacing: .2mm; }
+  .title-rule { height: 9mm; background: #c51e25; }
+  .title-ar { direction: rtl; font-size: 5mm; font-weight: 900; }
+
+  .meta { display: grid; grid-template-columns: 1fr 1fr; gap: 4mm; margin-top: 4mm; }
+  .meta-cell {
+    display: flex;
+    align-items: baseline;
+    gap: 2.5mm;
+    padding: 1.8mm 3mm;
+    border: .35mm solid #c51e25;
+    border-radius: 2mm;
+  }
+  .meta-label {
+    font-size: 2.5mm;
+    font-weight: 700;
+    letter-spacing: .16em;
+    text-transform: uppercase;
+    color: #6e6a62;
+  }
+  .meta-value { font-size: 3.6mm; font-weight: 700; font-variant-numeric: tabular-nums; }
+
+  /* --------------------------------------------------------------- section --- */
+  .section { margin-top: 5mm; }
+  .section-head { display: flex; align-items: center; gap: 2.5mm; margin-bottom: 2mm; }
+  .section-no {
+    min-width: 6mm;
+    height: 6mm;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    background: #c51e25;
+    color: #fff;
+    font-size: 2.8mm;
+    font-weight: 900;
+  }
+  .section-title { font-size: 3.2mm; font-weight: 900; letter-spacing: .14em; text-transform: uppercase; }
+  .section-title-ar { margin-left: auto; direction: rtl; font-size: 3.2mm; font-weight: 700; color: #4a4843; }
+
+  /* ----------------------------------------------------------------- party --- */
+  .parties { display: grid; grid-template-columns: 1fr 1fr; gap: 4mm; }
+  .party {
+    border: .3mm solid #d8d2c6;
+    border-top: .9mm solid #111;
+    border-radius: 1.5mm;
+    padding: 2.6mm 3.2mm;
+  }
+  .party-role { font-size: 2.5mm; font-weight: 700; letter-spacing: .16em; text-transform: uppercase; color: #c51e25; }
+  .party-role-ar { direction: rtl; font-size: 2.5mm; color: #6e6a62; }
+  .party-name { margin-top: 1.2mm; font-size: 4mm; font-weight: 900; line-height: 1.2; }
+  .party-row { display: flex; justify-content: space-between; gap: 3mm; margin-top: 1.2mm; font-size: 2.9mm; }
+  .party-row span:first-child { color: #6e6a62; }
+  .party-row span:last-child { font-weight: 700; text-align: right; }
+
+  .intermediary {
+    margin-top: 3mm;
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    gap: 4mm;
+    align-items: baseline;
+    padding: 2.2mm 3.2mm;
+    background: #faf8f4;
+    border: .3mm dashed #c51e25;
+    border-radius: 1.5mm;
+    font-size: 2.9mm;
+  }
+  .intermediary-role { font-size: 2.5mm; font-weight: 700; letter-spacing: .16em; text-transform: uppercase; color: #c51e25; }
+  .intermediary-name { font-weight: 900; }
+  .intermediary-arm { color: #6e6a62; }
+  /* the whole band disappears when the record carries no broker */
+  body.no-intermediary .intermediary { display: none; }
+
+  /* --------------------------------------------------------------- vehicle --- */
+  table.grid { width: 100%; border-collapse: collapse; }
+  table.grid th, table.grid td {
+    border: .3mm solid #d8d2c6;
+    padding: 1.9mm 3mm;
+    text-align: left;
+    vertical-align: top;
+    font-size: 3mm;
+  }
+  table.grid th {
+    background: #faf8f4;
+    font-size: 2.5mm;
+    font-weight: 700;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    color: #6e6a62;
+    width: 30%;
+  }
+  table.grid th small { display: block; direction: rtl; font-size: 2.4mm; letter-spacing: 0; text-transform: none; color: #4a4843; }
+  table.grid td { font-weight: 700; }
+  table.grid td.mono { font-family: "Courier New", Courier, monospace; letter-spacing: .2mm; }
+
+  /* ----------------------------------------------------------------- money --- */
+  .money { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 3mm; }
+  .money-cell {
+    border: .35mm solid #d8d2c6;
+    border-radius: 1.5mm;
+    padding: 2.4mm 3.2mm;
+  }
+  .money-cell.emphasis { border-color: #c51e25; background: #fdf6f6; }
+  .money-label { font-size: 2.5mm; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; color: #6e6a62; }
+  .money-value { margin-top: 1mm; font-size: 4.6mm; font-weight: 900; font-variant-numeric: tabular-nums; }
+  .money-words { margin-top: .8mm; font-size: 2.5mm; color: #4a4843; line-height: 1.35; }
+
+  /* ----------------------------------------------------------------- terms --- */
+  .terms { margin: 0; padding-left: 5mm; }
+  .terms li { margin-bottom: 1.6mm; font-size: 2.85mm; line-height: 1.45; }
+  .terms li b { font-weight: 700; }
+  .terms li small { display: block; direction: rtl; font-size: 2.55mm; color: #4a4843; line-height: 1.5; }
+
+  .note {
+    margin-top: 3mm;
+    padding: 2.4mm 3.2mm;
+    background: #faf8f4;
+    border-left: .9mm solid #c51e25;
+    font-size: 2.9mm;
+  }
+  .note-label { display: block; font-size: 2.4mm; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; color: #6e6a62; margin-bottom: .6mm; }
+  /* notes_state is no-notes when the operator typed nothing, so an empty row never prints */
+  .note.no-notes { display: none; }
+
+  /* ------------------------------------------------------------- signature --- */
+  .signatures { display: grid; grid-template-columns: 1fr 1fr; gap: 6mm; margin-top: 6mm; }
+  .sign { border-top: .35mm solid #111; padding-top: 1.8mm; }
+  .sign-role { font-size: 2.6mm; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; }
+  .sign-role-ar { direction: rtl; font-size: 2.5mm; color: #6e6a62; }
+  .sign-line { height: 14mm; }
+  .sign-name { font-size: 2.9mm; color: #4a4843; }
+
+  .foot {
+    position: absolute;
+    left: 14mm;
+    right: 14mm;
+    bottom: 7mm;
+    display: flex;
+    justify-content: space-between;
+    gap: 4mm;
+    padding-top: 2mm;
+    border-top: .3mm solid #d8d2c6;
+    font-size: 2.4mm;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    color: #6e6a62;
+  }
+
+  @media print {
+    body { background: #fff; }
+    .sheet { box-shadow: none; }
+  }
+</style>
+</head>
+<body class="{{logo_state}} {{intermediary_state}}">
+<div class="sheet">
+
+  <header class="head">
+    <div class="mark"><img src="{{logo_url}}" alt="{{company_legal_name_en}}"></div>
+    <div>
+      <div class="legal-en"><span class="accent">{{company_legal_name_en_head}}</span> {{company_legal_name_en_tail}}</div>
+      <div class="legal-ar" lang="ar" dir="rtl"><span class="accent">{{company_legal_name_ar_head}}</span> {{company_legal_name_ar_tail}}</div>
+    </div>
+    <div class="contact">
+      <div>{{company_phone}}</div>
+      <div>{{company_email}}</div>
+      <div>{{company_address}}</div>
+    </div>
+  </header>
+
+  <div class="title-bar">
+    <div class="title-en">VEHICLE PURCHASE AGREEMENT</div>
+    <div class="title-rule"></div>
+    <div class="title-ar" lang="ar" dir="rtl">عقد شراء مركبة</div>
+  </div>
+
+  <div class="meta">
+    <div class="meta-cell">
+      <span class="meta-label">Agreement no.</span>
+      <span class="meta-value">{{agreement_number}}</span>
+    </div>
+    <div class="meta-cell">
+      <span class="meta-label">Date</span>
+      <span class="meta-value">{{agreement_date}}</span>
+    </div>
+  </div>
+
+  <section class="section">
+    <div class="section-head">
+      <span class="section-no">1</span>
+      <span class="section-title">Parties</span>
+      <span class="section-title-ar" lang="ar" dir="rtl">الأطراف</span>
+    </div>
+    <div class="parties">
+      <div class="party">
+        <div class="party-role">Seller <span class="party-role-ar" lang="ar" dir="rtl">البائع</span></div>
+        <div class="party-name">{{seller_name}}</div>
+        <div class="party-row"><span>ID / Passport</span><span>{{seller_id_number}}</span></div>
+        <div class="party-row"><span>Phone</span><span>{{seller_phone}}</span></div>
+        <div class="party-row"><span>Address</span><span>{{seller_address}}</span></div>
+      </div>
+      <div class="party">
+        <div class="party-role">Buyer <span class="party-role-ar" lang="ar" dir="rtl">المشتري</span></div>
+        <div class="party-name">{{buyer_name}}</div>
+        <div class="party-row"><span>ID / Passport</span><span>{{buyer_id_number}}</span></div>
+        <div class="party-row"><span>Phone</span><span>{{buyer_phone}}</span></div>
+        <div class="party-row"><span>Address</span><span>{{buyer_address}}</span></div>
+      </div>
+    </div>
+    <div class="intermediary">
+      <span class="intermediary-role">Intermediary <span class="intermediary-arm" lang="ar" dir="rtl">الوسيط</span></span>
+      <span><span class="intermediary-name">{{intermediary_name}}</span> · {{intermediary_phone}}</span>
+      <span>{{intermediary_commission}}</span>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="section-head">
+      <span class="section-no">2</span>
+      <span class="section-title">Vehicle</span>
+      <span class="section-title-ar" lang="ar" dir="rtl">المركبة</span>
+    </div>
+    <table class="grid">
+      <tr><th>Make and model <small>الطراز</small></th><td>{{vehicle_model}}</td></tr>
+      <tr><th>Model year <small>سنة الصنع</small></th><td>{{vehicle_year}}</td></tr>
+      <tr><th>Chassis number <small>رقم الهيكل</small></th><td class="mono">{{vehicle_chassis}}</td></tr>
+      <tr><th>Plate number <small>رقم اللوحة</small></th><td>{{vehicle_plate}}</td></tr>
+      <tr><th>Colour <small>اللون</small></th><td>{{vehicle_color}}</td></tr>
+      <tr><th>Odometer <small>عداد المسافات</small></th><td>{{vehicle_odometer}}</td></tr>
+      <tr><th>Registered in <small>مكان التسجيل</small></th><td>{{vehicle_registration_place}}</td></tr>
+    </table>
+  </section>
+
+  <section class="section">
+    <div class="section-head">
+      <span class="section-no">3</span>
+      <span class="section-title">Agreed price</span>
+      <span class="section-title-ar" lang="ar" dir="rtl">الثمن المتفق عليه</span>
+    </div>
+    <div class="money">
+      <div class="money-cell">
+        <div class="money-label">Full price</div>
+        <div class="money-value">{{currency}} {{full_amount}}</div>
+        <div class="money-words">{{full_amount_words}}</div>
+      </div>
+      <div class="money-cell">
+        <div class="money-label">Paid on signing</div>
+        <div class="money-value">{{currency}} {{paid_amount}}</div>
+        <div class="money-words">{{paid_amount_words}}</div>
+      </div>
+      <div class="money-cell emphasis">
+        <div class="money-label">Balance due</div>
+        <div class="money-value">{{currency}} {{balance}}</div>
+        <div class="money-words">{{balance_words}}</div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="section-head">
+      <span class="section-no">4</span>
+      <span class="section-title">Terms</span>
+      <span class="section-title-ar" lang="ar" dir="rtl">الشروط</span>
+    </div>
+    <ol class="terms">
+      <li><b>The seller declares</b> that the vehicle described above is their own property, free of any mortgage, lien, seizure or third-party claim, that its chassis, registration and odometer details are correct, and hands over the original registration card, both keys and the documents listed above.
+        <small>يقر البائع بأن المركبة الموصوفة أعلاه مملوكة له ملكية تامة وخالية من أي رهن أو حجز أو مطالبة من الغير، وأن بيانات الهيكل والتسجيل والعداد صحيحة، ويسلم أصل الملكية والمفاتيح والمستندات المذكورة أعلاه.</small></li>
+      <li><b>The buyer purchases</b> the vehicle at the price stated above and pays the amount on signing; the balance is settled on or before hand-over.
+        <small>يشتري المشتري المركبة بالثمن المذكور أعلاه ويسدد المبلغ المدفوع عند التوقيع، ويسدد الرصيد عند التسليم أو قبله.</small></li>
+      <li><b>Technical inspection</b> may be carried out by the buyer before hand-over, and the vehicle is handed over in the condition recorded at that inspection.
+        <small>للمشتري فحص المركبة فنياً قبل التسليم، ويتم التسليم بالحالة التي سُجلت عند الفحص.</small></li>
+      <li><b>Hand-over</b> takes place once the seller signs receipt of the paid amount above, and only then does the vehicle leave the seller's possession.
+        <small>يتم التسليم عند توقيع البائع على استلام المبلغ المدفوع أعلاه، وعندها فقط تخرج المركبة من حيازة البائع.</small></li>
+      <li><b>Traffic fines and obligations</b> registered before the hand-over date are borne by the seller; those registered after it are borne by the buyer.
+        <small>المخالفات والالتزامات المسجلة قبل تاريخ التسليم على البائع، وما يسجل بعدها على المشتري.</small></li>
+      <li><b>Any amendment</b> to this agreement is valid only when written on this sheet and signed by both parties.
+        <small>لا يجوز تعديل هذا العقد إلا كتابةً على هذه الورقة وبموافقة الطرفين وتوقيعهما.</small></li>
+    </ol>
+    <div class="note {{notes_state}}">
+      <span class="note-label">Notes <span lang="ar" dir="rtl">ملاحظات</span></span>
+      {{notes}}
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="section-head">
+      <span class="section-no">5</span>
+      <span class="section-title">Signatures</span>
+      <span class="section-title-ar" lang="ar" dir="rtl">التوقيعات</span>
+    </div>
+    <div class="signatures">
+      <div class="sign">
+        <div class="sign-line"></div>
+        <div class="sign-role">Seller <span class="sign-role-ar" lang="ar" dir="rtl">البائع</span></div>
+        <div class="sign-name">{{seller_name}}</div>
+      </div>
+      <div class="sign">
+        <div class="sign-line"></div>
+        <div class="sign-role">Buyer <span class="sign-role-ar" lang="ar" dir="rtl">المشتري</span></div>
+        <div class="sign-name">{{buyer_name}}</div>
+      </div>
+      <div class="sign">
+        <div class="sign-line"></div>
+        <div class="sign-role">Intermediary <span class="sign-role-ar" lang="ar" dir="rtl">الوسيط</span></div>
+        <div class="sign-name">{{intermediary_name}}</div>
+      </div>
+      <div class="sign">
+        <div class="sign-line"></div>
+        <div class="sign-role">For the company <span class="sign-role-ar" lang="ar" dir="rtl">عن الشركة</span></div>
+        <div class="sign-name">{{company_name}}</div>
+      </div>
+    </div>
+  </section>
+
+  <footer class="foot">
+    <span>{{company_legal_name_en}}</span>
+    <span>{{agreement_number}}</span>
+    <span>Page 1 of 1</span>
+  </footer>
+</div>
+</body>
+</html>

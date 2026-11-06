@@ -10,7 +10,8 @@
     "db:migrate:remote": "wrangler d1 migrations apply challenger-quotation-db --remote",
     "test:scan": "node scripts/test-scan.mjs",
     "test:share": "node scripts/test-share.mjs",
-    "test": "npm run test:scan && npm run test:share",
+    "test:agreement-share": "node scripts/test-agreement-share.mjs",
+    "test": "npm run test:scan && npm run test:share && npm run test:agreement-share",
     "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.web.json"
   },
   "devDependencies": {

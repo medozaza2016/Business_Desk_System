@@ -1,25 +1,11 @@
 /* Challenger Quotation Desk — client
-   No framework, no build step. Views: gate → modules → quotation workspace / settings / vehicle agreements preview. */
+   No framework, no build step. Views: gate → modules → quotation workspace / vehicle
+   agreement ledger / settings. The agreement wizard lives in agreement-wizard.js and
+   the record page has its own agreement.js; this file owns the ledgers. */
 
 import { confirmAction } from "./dialog.js";
-
-const APP_VERSION_FALLBACK = "1.0.0";
-
-async function loadAppVersion() {
-  let version = APP_VERSION_FALLBACK;
-  try {
-    const response = await fetch("/version.json", { cache: "no-store" });
-    if (response.ok) {
-      const data = await response.json();
-      if (typeof data.version === "string" && /^\d+\.\d+\.\d+(?:[-+][A-Za-z0-9.-]+)?$/.test(data.version)) {
-        version = data.version;
-      }
-    }
-  } catch { /* retain the bundled fallback */ }
-  for (const label of document.querySelectorAll(".app-version-label")) {
-    label.textContent = `Version ${version}`;
-  }
-}
+import { openAgreementWizard } from "./agreement-wizard.js";
+import { loadAppVersion } from "./version.js";
 
 /** @param {string} id @returns {any} */
 const $ = (id) => document.getElementById(id);
@@ -33,6 +19,13 @@ const state = {
   quoteView: "active",
   /** "number" (newest serial first) or "date"; the Worker orders the rows */
   sort: "number",
+  /** the agreement ledger keeps its own filters, one book at a time */
+  agreements: [],
+  agreementKind: "sale",
+  agreementView: "active",
+  agreementSearch: "",
+  agreementSort: "number",
+  agreementCounts: { sale: 0, purchase: 0 },
   templates: [],
   templateEditId: null,
   settings: null,
@@ -95,6 +88,18 @@ const humanError = (error) => {
     scan_required: "Scan the signed page on the record before completing it.",
     invalid_share_mode: "Pick one of the two hand-off options.",
     no_fields_to_update: "Nothing to save.",
+    agreement_not_found: "That agreement no longer exists.",
+    agreement_confirmation_required: "Type the exact agreement number to confirm permanent deletion.",
+    agreement_must_be_deleted_first: "Move the agreement to Deleted before permanently removing it.",
+    agreement_not_deleted: "Only deleted agreements can be restored.",
+    invalid_agreement_kind: "Pick either a sale or a purchase agreement.",
+    invalid_agreement_date: "Enter a valid agreement date.",
+    agreement_fields_required: "Fill the vehicle model, year and chassis, and both party names.",
+    invalid_full_amount: "Enter the agreed price between 0 and 99,999,999.99.",
+    invalid_paid_amount: "Enter the amount paid between 0 and 99,999,999.99.",
+    paid_amount_exceeds_full: "The amount paid cannot be larger than the agreed price.",
+    agreement_completed: "This agreement is completed. Reopen it on the record page.",
+    invalid_status: "Pick either issued or completed for this agreement.",
   };
   return map[error?.message] || error?.message || "Something went wrong.";
 };
@@ -217,7 +222,7 @@ function showGate() {
   $("modulesView").hidden = true;
   $("workspaceView").hidden = true;
   $("settingsView").hidden = true;
-  $("agreementsPreviewView").hidden = true;
+  $("agreementsView").hidden = true;
   $("gate").hidden = false;
   $("gatePasscode").focus();
 }
@@ -326,11 +331,15 @@ function switchCompany(id) {
   /* every version, editor buffer and preview belongs to the old company */
   state.templates = [];
   state.templateEditId = null;
+  state.agreements = [];
+  state.agreementCounts = { sale: 0, purchase: 0 };
   renderCompanySelect();
   paintCompanyChrome();
   paintCompanySettings();
   refreshNextNumber();
   loadQuotes();
+  if (!$("agreementsView").hidden) void loadAgreements();
+  else renderAgreements();
   if (state.settingsOpen) void refreshStudio();
 }
 
@@ -399,7 +408,7 @@ function renderQuotes() {
     const numberWrap = document.createElement("div");
     numberWrap.className = "num-stack";
     const link = document.createElement(isDeleted ? "span" : "a");
-    if (!isDeleted) link.href = `/quote?id=${encodeURIComponent(quote.id)}`;
+    if (!isDeleted) /** @type {HTMLAnchorElement} */ (link).href = `/quote?id=${encodeURIComponent(quote.id)}`;
     link.textContent = quote.quote_number;
     const mark = document.createElement("span");
     mark.className = `chip ${isDeleted ? "off" : quote.status === "completed" || quote.has_scan ? "ok" : "off"}`;
@@ -533,6 +542,210 @@ async function submitQuote(event) {
   } finally {
     button.disabled = false;
   }
+}
+
+/* ------------------------------------------------------ agreement ledger --- */
+
+const AGREEMENT_KIND_TEXT = {
+  sale: { title: "Sale agreements", lede: "Vehicles the company sells, priced and signed." },
+  purchase: { title: "Purchase agreements", lede: "Vehicles the company buys, priced and signed." },
+};
+
+/** One line per record: the number is the door, the balance is the argument. */
+function renderAgreements() {
+  const body = $("agreementsBody");
+  body.textContent = "";
+  const company = activeCompany();
+  const isDeleted = state.agreementView === "deleted";
+  const text = AGREEMENT_KIND_TEXT[state.agreementKind] || AGREEMENT_KIND_TEXT.sale;
+  $("agreementsTitle").textContent = text.title;
+  $("agreementsLede").textContent = text.lede;
+  $("agreementsEmpty").hidden = state.agreements.length > 0;
+  $("agreementsEmpty").innerHTML = isDeleted
+    ? "<b>Nothing deleted</b> Cancelled agreements for this company will appear here."
+    : state.agreementSearch
+      ? "<b>No matches</b> Nothing in this book matches that search."
+      : `<b>No ${state.agreementKind} agreements yet</b> Issue the first one to keep the paper in one place.`;
+  $("agreementActionsHead").hidden = !isDeleted;
+
+  for (const button of $("agreementKind").querySelectorAll("button[data-kind]")) {
+    button.setAttribute("aria-pressed", button.dataset.kind === state.agreementKind ? "true" : "false");
+  }
+  for (const badge of $("agreementKind").querySelectorAll("b[data-count]")) {
+    badge.textContent = String(state.agreementCounts[badge.dataset.count] || 0);
+  }
+  for (const button of $("agreementView").querySelectorAll("button[data-view]")) {
+    button.setAttribute("aria-pressed", button.dataset.view === state.agreementView ? "true" : "false");
+  }
+  for (const button of $("agreementSort").querySelectorAll("button[data-sort]")) {
+    button.setAttribute("aria-pressed", button.dataset.sort === state.agreementSort ? "true" : "false");
+  }
+
+  $("agreementCsv").href = company
+    ? `/api/export/agreements.csv?company_id=${encodeURIComponent(company.id)}&kind=${state.agreementKind}`
+    : "#";
+  $("agreementCsv").hidden = isDeleted || !company;
+  $("newAgreementBtn").disabled = !company;
+
+  for (const agreement of state.agreements) {
+    const row = document.createElement("tr");
+    if (isDeleted) {
+      row.className = "row-deleted";
+    } else {
+      row.className = "row-open";
+      row.dataset.href = `/agreement?id=${encodeURIComponent(agreement.id)}`;
+    }
+
+    const numberCell = document.createElement("td");
+    numberCell.className = "num";
+    const numberWrap = document.createElement("div");
+    numberWrap.className = "num-stack";
+    const link = document.createElement(isDeleted ? "span" : "a");
+    if (!isDeleted) /** @type {HTMLAnchorElement} */ (link).href = `/agreement?id=${encodeURIComponent(agreement.id)}`;
+    link.textContent = agreement.agreement_number;
+    const mark = document.createElement("span");
+    const settled = Number(agreement.balance_cents || 0) === 0;
+    mark.className = `chip ${isDeleted ? "off" : agreement.status === "completed" || settled ? "ok" : "off"}`;
+    mark.textContent = isDeleted
+      ? "deleted"
+      : agreement.status === "completed"
+        ? "filed"
+        : agreement.signed ? "signed" : "unsigned";
+    numberWrap.append(link, mark);
+    numberCell.appendChild(numberWrap);
+    row.appendChild(numberCell);
+
+    row.appendChild(rowCell(agreement.agreement_date_text || agreement.agreement_date, "date", "Date"));
+
+    const vehicle = document.createElement("td");
+    vehicle.className = "vehicle";
+    const model = document.createElement("b");
+    model.textContent = `${agreement.vehicle_model} ${agreement.vehicle_year}`;
+    const chassis = document.createElement("span");
+    chassis.textContent = [agreement.vehicle_chassis, agreement.vehicle_plate].filter(Boolean).join(" · ");
+    vehicle.append(model, chassis);
+    row.appendChild(vehicle);
+
+    const parties = document.createElement("td");
+    parties.className = "parties";
+    const seller = document.createElement("span");
+    seller.textContent = agreement.seller_name;
+    const arrow = document.createElement("i");
+    arrow.textContent = "→";
+    arrow.setAttribute("aria-hidden", "true");
+    const buyer = document.createElement("span");
+    buyer.textContent = agreement.buyer_name;
+    parties.append(seller, arrow, buyer);
+    row.appendChild(parties);
+
+    row.appendChild(rowCell(`${agreement.currency} ${agreement.full_amount}`, "money", "Agreed"));
+    row.appendChild(rowCell(`${agreement.currency} ${agreement.balance}`, "money", "Balance"));
+
+    if (isDeleted) {
+      const actions = document.createElement("td");
+      actions.className = "quote-row-actions";
+      const restore = document.createElement("button");
+      restore.type = "button";
+      restore.className = "btn ghost small";
+      restore.dataset.agreementAction = "restore";
+      restore.dataset.agreementId = agreement.id;
+      restore.textContent = "Restore";
+      const remove = document.createElement("button");
+      remove.type = "button";
+      remove.className = "btn danger small";
+      remove.dataset.agreementAction = "permanent-delete";
+      remove.dataset.agreementId = agreement.id;
+      remove.dataset.agreementNumber = agreement.agreement_number;
+      remove.textContent = "Delete permanently";
+      actions.append(restore, remove);
+      row.appendChild(actions);
+    }
+    body.appendChild(row);
+  }
+}
+
+async function loadAgreements() {
+  if (!state.companyId) {
+    state.agreements = [];
+    state.agreementCounts = { sale: 0, purchase: 0 };
+    renderAgreements();
+    return;
+  }
+  const query = new URLSearchParams({
+    company_id: state.companyId,
+    kind: state.agreementKind,
+    limit: "100",
+    sort: state.agreementSort,
+    view: state.agreementView,
+  });
+  if (state.agreementSearch) query.set("q", state.agreementSearch);
+  try {
+    const data = await api(`/api/agreements?${query.toString()}`);
+    state.agreements = data.agreements || [];
+    state.agreementCounts = data.counts || { sale: 0, purchase: 0 };
+    renderAgreements();
+  } catch (error) {
+    if (error.status === 401) return signOut("Your session expired.");
+    toast(humanError(error), "error");
+  }
+}
+
+/** Restore a cancelled agreement from the Deleted view. */
+async function restoreAgreement(id) {
+  try {
+    const data = await api(`/api/agreements/${encodeURIComponent(id)}/restore`, { method: "POST" });
+    toast(`${data.agreement_number || "Agreement"} restored.`);
+    await loadAgreements();
+  } catch (error) {
+    toast(humanError(error), "error");
+  }
+}
+
+/** Permanently remove a cancelled agreement, including its signed scan. */
+async function permanentlyDeleteAgreement(id, agreementNumber) {
+  const okay = await confirmAction({
+    title: `Permanently delete ${agreementNumber}?`,
+    message: "This removes the agreement and its stored signed file. Its audit history is retained. This action cannot be undone.",
+    confirm: "Delete permanently",
+    cancel: "Keep record",
+    expectedText: agreementNumber,
+    inputLabel: "Type the agreement number to confirm",
+  });
+  if (!okay) return;
+  try {
+    const result = await api(`/api/agreements/${encodeURIComponent(id)}/permanent`, {
+      method: "DELETE",
+      body: { confirm_number: agreementNumber },
+    });
+    toast(result.asset_cleanup_failed
+      ? `${agreementNumber} removed, but its stored file could not be cleared.`
+      : `${agreementNumber} permanently deleted.`);
+    await loadAgreements();
+  } catch (error) {
+    toast(humanError(error), "error");
+  }
+}
+
+/** The wizard is opened from wherever the desk is standing; it owns nothing but itself. */
+function openAgreementWizardFor(kind) {
+  const company = activeCompany();
+  if (!company) {
+    toast("Add a company first in Settings.", "error");
+    return;
+  }
+  openAgreementWizard({
+    companyId: company.id,
+    currency: company.currency || "AED",
+    kind: kind || state.agreementKind,
+    onCreated(agreement) {
+      toast(`${agreement.agreement_number} issued.`);
+      state.agreementKind = agreement.kind === "purchase" ? "purchase" : "sale";
+      state.agreementView = "active";
+      state.agreementSearch = "";
+      $("agreementSearch").value = "";
+      void loadAgreements();
+    },
+  });
 }
 
 /* --------------------------------------------------------------- settings --- */
@@ -1123,6 +1336,18 @@ const AUDIT_ACTIONS = {
   "quotation.share_link_created": ["Customer link created", "success"],
   "quotation.share_link_rotated": ["Customer link renewed", "neutral"],
   "quotation.share_link_revoked": ["Customer link revoked", "warning"],
+  "agreement.created": ["Agreement issued", "success"],
+  "agreement.updated": ["Agreement updated", "neutral"],
+  "agreement.cancelled": ["Agreement moved to Deleted", "warning"],
+  "agreement.restored": ["Agreement restored", "success"],
+  "agreement.permanently_deleted": ["Agreement permanently deleted", "danger"],
+  "agreement.scan_uploaded": ["Signed agreement uploaded", "success"],
+  "agreement.scan_removed": ["Signed agreement removed", "warning"],
+  "agreement.completed": ["Agreement marked completed", "success"],
+  "agreement.reopened": ["Agreement reopened", "neutral"],
+  "agreement.share_link_created": ["Agreement link created", "success"],
+  "agreement.share_link_rotated": ["Agreement link renewed", "neutral"],
+  "agreement.share_link_revoked": ["Agreement link revoked", "warning"],
 };
 
 const AUDIT_FIELD_LABELS = {
@@ -1135,6 +1360,16 @@ const AUDIT_FIELD_LABELS = {
   quotation_prefix: "Quotation number prefix",
   currency: "Currency",
   active: "Active status",
+  agreement_number: "Agreement number",
+  kind: "Agreement type",
+  full_amount_cents: "Agreed price",
+  paid_amount_cents: "Paid on signing",
+  vehicle_model: "Vehicle model",
+  vehicle_year: "Vehicle year",
+  vehicle_chassis: "Chassis number",
+  vehicle_plate: "Plate",
+  seller_name: "Seller",
+  buyer_name: "Buyer",
   quote_number: "Quotation number",
   quote_date: "Quotation date",
   model: "Vehicle model",
@@ -1163,6 +1398,7 @@ function auditDateParts(value) {
 
 function auditRecordLabel(event) {
   const details = event.details || {};
+  if (details.agreement_number) return `Agreement · ${details.agreement_number}`;
   if (details.quote_number) return `Quotation · ${details.quote_number}`;
   if (details.name) return `Company · ${details.name}`;
   if (event.entity === "company") {
@@ -1175,6 +1411,7 @@ function auditRecordLabel(event) {
   }
   if (event.entity === "settings") return "Business Desk settings";
   if (event.entity === "quotation") return "Quotation record";
+  if (event.entity === "agreement") return "Agreement record";
   return event.entity ? `${event.entity} record` : "Workspace";
 }
 
@@ -1212,6 +1449,15 @@ function auditActivitySummary(event) {
     });
     summaries.push(`${currency} ${amount}`);
   }
+  if (details.full_amount_cents !== undefined && Number.isFinite(Number(details.full_amount_cents))) {
+    const company = state.companies.find((item) => item.id === details.company_id);
+    const currency = company?.currency || "Value";
+    const amount = (Number(details.full_amount_cents) / 100).toLocaleString(undefined, {
+      minimumFractionDigits: 2, maximumFractionDigits: 2,
+    });
+    summaries.push(`Agreed ${currency} ${amount}`);
+  }
+  if (details.kind) summaries.push(details.kind === "purchase" ? "Purchase agreement" : "Sale agreement");
   if (details.active !== undefined) summaries.push(details.active ? "Set as active" : "Saved as inactive");
   if (details.slug) summaries.push(`Reference: ${details.slug}`);
   if (details.audit_events_retained) summaries.push("Audit history retained");
@@ -1225,6 +1471,9 @@ function auditDetailValue(key, value) {
     return value.map((field) => AUDIT_FIELD_LABELS[field] || String(field).replaceAll("_", " ")).join(", ");
   }
   if (key === "amount_cents" && Number.isFinite(Number(value))) {
+    return `${(Number(value) / 100).toFixed(2)} (stored in minor currency units)`;
+  }
+  if ((key === "full_amount_cents" || key === "paid_amount_cents") && Number.isFinite(Number(value))) {
     return `${(Number(value) / 100).toFixed(2)} (stored in minor currency units)`;
   }
   if (typeof value === "boolean") return value ? "Yes" : "No";
@@ -1261,6 +1510,10 @@ function auditDetailLabel(key) {
     share_mode: "Sharing preference",
     status: "Quotation status",
     amount_cents: "Quotation value",
+    agreement_number: "Agreement number",
+    kind: "Agreement type",
+    full_amount_cents: "Agreed price (minor units)",
+    paid_amount_cents: "Paid on signing (minor units)",
     permanent: "Permanent deletion",
     seeded_company: "Initial company reference",
     type: "Logo file type",
@@ -1436,11 +1689,11 @@ function showView(name) {
   $("modulesView").hidden = view !== "modules";
   $("workspaceView").hidden = view !== "desk";
   $("settingsView").hidden = view !== "settings";
-  $("agreementsPreviewView").hidden = view !== "agreements";
+  $("agreementsView").hidden = view !== "agreements";
   $("appVersionFooter").hidden = view === "modules";
   const moduleLanding = view === "modules";
-  $("companySwitch").hidden = moduleLanding || view === "agreements";
-  $("topbarRule").hidden = moduleLanding || view === "agreements";
+  $("companySwitch").hidden = moduleLanding;
+  $("topbarRule").hidden = moduleLanding;
   $("modulesLink").hidden = moduleLanding;
   $("settingsLink").hidden = view === "settings";
   const url = new URL(location.href);
@@ -1451,6 +1704,7 @@ function showView(name) {
   if (view !== "settings") url.searchParams.delete("pane");
   history.replaceState(null, "", url);
   if (view === "settings") window.requestAnimationFrame(fitStudioPreview);
+  if (view === "agreements") void loadAgreements();
 }
 
 async function openSettings(pane) {
@@ -1476,6 +1730,8 @@ async function signOut(message) {
     turnstile_site_key: freshStatus?.turnstile_site_key || previousStatus.turnstile_site_key || null,
   };
   state.quotes = [];
+  state.agreements = [];
+  state.agreementCounts = { sale: 0, purchase: 0 };
   state.templates = [];
   state.templateEditId = null;
   renderGate(state.status);
@@ -1529,19 +1785,68 @@ function bind() {
   $("modulesLink").addEventListener("click", () => showView("modules"));
   const moduleGrid = document.querySelector(".module-picker-grid");
   moduleGrid.addEventListener("click", (event) => {
-    const card = event.target.closest(".module-choice[data-module]");
+    const card = /** @type {Element} */ (event.target).closest(".module-choice[data-module]");
     if (card && moduleGrid.contains(card)) openModuleCard(card);
   });
   moduleGrid.addEventListener("keydown", (event) => {
-    const card = event.target.closest(".module-choice[data-module]");
+    const card = /** @type {Element} */ (event.target).closest(".module-choice[data-module]");
     if (!card || !moduleGrid.contains(card)) return;
-    if (event.key === "Enter" || event.key === " ") {
+    const key = /** @type {KeyboardEvent} */ (event).key;
+    if (key === "Enter" || key === " ") {
       event.preventDefault();
       openModuleCard(card);
     }
   });
-  $("backToModules").addEventListener("click", () => showView("modules"));
-  $("previewBackAction").addEventListener("click", () => showView("modules"));
+  $("agreementsBack").addEventListener("click", () => showView("modules"));
+  $("newAgreementBtn").addEventListener("click", () => openAgreementWizardFor());
+  $("agreementKind").addEventListener("click", (event) => {
+    const button = event.target.closest("button[data-kind]");
+    if (!button || button.dataset.kind === state.agreementKind) return;
+    state.agreementKind = button.dataset.kind === "purchase" ? "purchase" : "sale";
+    state.agreementSearch = "";
+    $("agreementSearch").value = "";
+    loadAgreements();
+  });
+  $("agreementView").addEventListener("click", (event) => {
+    const button = event.target.closest("button[data-view]");
+    if (!button || button.dataset.view === state.agreementView) return;
+    state.agreementView = button.dataset.view === "deleted" ? "deleted" : "active";
+    loadAgreements();
+  });
+  $("agreementSort").addEventListener("click", (event) => {
+    const button = event.target.closest("button[data-sort]");
+    if (!button || button.dataset.sort === state.agreementSort) return;
+    state.agreementSort = button.dataset.sort === "date" ? "date" : "number";
+    loadAgreements();
+  });
+  let agreementSearchTimer = null;
+  $("agreementSearch").addEventListener("input", () => {
+    clearTimeout(agreementSearchTimer);
+    const value = $("agreementSearch").value.trim();
+    agreementSearchTimer = setTimeout(() => { state.agreementSearch = value; loadAgreements(); }, 260);
+  });
+  $("agreementSearchForm").addEventListener("submit", (event) => {
+    event.preventDefault();
+    state.agreementSearch = $("agreementSearch").value.trim();
+    loadAgreements();
+  });
+  $("agreementsBody").addEventListener("click", (event) => {
+    const button = event.target.closest("button[data-agreement-action]");
+    if (button) {
+      event.preventDefault();
+      event.stopPropagation();
+      const id = button.dataset.agreementId;
+      if (button.dataset.agreementAction === "restore") void restoreAgreement(id);
+      else if (button.dataset.agreementAction === "permanent-delete") {
+        void permanentlyDeleteAgreement(id, button.dataset.agreementNumber || "");
+      }
+      return;
+    }
+    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    if (window.getSelection()?.toString()) return;
+    const row = event.target.closest("tr[data-href]");
+    if (row) location.href = row.dataset.href;
+  });
   $("companyForm").addEventListener("submit", saveCompany);
   $("logoPick").addEventListener("click", () => $("logoFile").click());
   $("logoFile").addEventListener("change", () => {
@@ -1631,7 +1936,8 @@ function bind() {
     }
     if (event.key.toLowerCase() === "n" && !typing && !state.settingsOpen) {
       event.preventDefault();
-      $("model").focus();
+      if (!$("agreementsView").hidden) openAgreementWizardFor();
+      else $("model").focus();
     }
   });
 }

@@ -1,0 +1,222 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="light">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<title>Agreement record</title>
+<link rel="stylesheet" href="/app.css">
+</head>
+<body>
+
+<header class="topbar">
+  <a class="brand" href="/?view=agreements"><b>AGREEMENT DESK</b><small>record</small></a>
+  <span class="topbar-rule"></span>
+    <span class="spacer"></span>
+  <!-- The header scrolls away, so the number rides up here and answers "which
+       agreement am I on?" at any scroll depth. -->
+  <span class="topbar-record" id="topbarRecord" hidden><b id="topbarRecordNumber">—</b></span>
+  <span class="chip" id="statusChip">loading</span>
+</header>
+
+<main class="record-wrap">
+  <header class="record-head">
+    <div>
+      <p class="eyebrow" id="recordKind">Vehicle agreement</p>
+      <h1 class="record-number" id="recordNumber">—</h1>
+      <div class="record-meta">
+        <div>Date<b id="metaDate">—</b></div>
+        <div>Vehicle<b id="metaVehicle">—</b></div>
+        <div>Chassis<b id="metaChassis">—</b></div>
+        <div>Parties<b id="metaParties">—</b></div>
+        <div>Agreed<b id="metaAgreed">—</b></div>
+        <div>Balance<b id="metaBalance">—</b></div>
+      </div>
+    </div>
+    <div class="record-actions">
+      <button class="btn primary small" id="completeBtn" type="button">Mark completed</button>
+      <button class="btn danger small" id="cancelBtn" type="button">Cancel record</button>
+    </div>
+  </header>
+
+  <section class="signed" id="signedCard" aria-labelledby="signedHeading">
+    <div class="signed-head">
+      <div>
+        <p class="eyebrow">Paperwork</p>
+        <h2 class="signed-title" id="signedHeading">Signed agreement</h2>
+      </div>
+      <span class="chip" id="signedChip">checking</span>
+    </div>
+
+    <div class="signed-body">
+      <figure class="signed-frame" id="signedFrame">
+        <img id="signedImage" alt="Signed copy of this agreement" hidden>
+        <a class="signed-doc" id="signedDoc" target="_blank" rel="noopener" hidden>
+          <span class="signed-doc-kind">PDF</span>
+          <span class="signed-doc-name" id="signedDocName">signed-page.pdf</span>
+          <span class="signed-doc-meta" id="signedDocMeta">tap to open</span>
+        </a>
+        <div class="signed-empty" id="signedEmpty">
+          <b>No signed page on file</b>
+          <span>Photograph the sheet once both parties have signed it, or upload the file your scanner produced. The record keeps the paper next to its figures.</span>
+        </div>
+        <span class="signed-stamp" id="signedStamp" hidden>Completed</span>
+      </figure>
+
+      <aside class="signed-side">
+        <dl class="signed-meta" id="signedMeta">
+          <div><dt>File</dt><dd id="scanFile">—</dd></div>
+          <div><dt>Size</dt><dd id="scanSize">—</dd></div>
+          <div><dt>Dimensions</dt><dd id="scanDimensions">—</dd></div>
+          <div><dt>Captured</dt><dd id="scanCaptured">—</dd></div>
+        </dl>
+
+        <div class="signed-buttons">
+          <button class="btn primary block" id="scanBtn" type="button">Scan the signed page</button>
+          <div class="signed-uploads">
+            <button class="btn ghost" id="uploadPhotoBtn" type="button">Upload a photo</button>
+            <button class="btn ghost" id="uploadPdfBtn" type="button">Upload a PDF</button>
+          </div>
+          <input type="file" id="photoInput" accept="image/png,image/jpeg,image/webp" hidden>
+          <input type="file" id="pdfInput" accept="application/pdf" hidden>
+        </div>
+
+        <div class="send-block" id="sendBlock" hidden>
+          <p class="field-label">Send to the customer</p>
+          <div class="segmented" id="sendMode" role="group" aria-label="Send the signed copy as">
+            <button type="button" data-mode="file" aria-pressed="true">Signed file</button>
+            <button type="button" data-mode="link" aria-pressed="false">Link only</button>
+          </div>
+          <button class="btn primary block" id="sendBtn" type="button">
+            <span id="sendLabel">Send on WhatsApp</span>
+          </button>
+          <div class="signed-links">
+            <button class="btn ghost small" id="shareBtn" type="button">Create link</button>
+            <button class="btn ghost small" id="revokeLinkBtn" type="button" hidden>Revoke link</button>
+            <button class="btn ghost small" id="downloadBtn" type="button">Download</button>
+            <button class="btn danger small" id="removeScanBtn" type="button">Remove</button>
+          </div>
+        </div>
+
+        <p class="signed-hint" id="signedHint">Nothing is sent from the desk itself: WhatsApp opens with the page already attached and you choose the chat.</p>
+      </aside>
+    </div>
+  </section>
+
+  <div class="record-grid">
+    <section class="panel" id="formCard">
+      <div class="card-head"><h2>Editable details</h2><span class="chip" id="companyChip">—</span></div>
+      <div class="card-body">
+        <form id="recordForm" novalidate>
+          <div class="grid-2">
+            <label class="field"><span class="field-label">Agreement date</span><input id="fDate" type="date" required></label>
+            <label class="field">
+              <span class="field-label">Number <em>allocated at issue</em></span>
+              <span class="prefix read-only-number">
+                <span class="prefix-tag" aria-hidden="true">AUTO</span>
+                <input id="fNumber" type="text" readonly aria-readonly="true">
+              </span>
+            </label>
+            <label class="field span-2"><span class="field-label">Vehicle model</span><input id="fModel" maxlength="120" required></label>
+            <label class="field"><span class="field-label">Year</span><input id="fYear" maxlength="20" inputmode="numeric" required></label>
+            <label class="field"><span class="field-label">Chassis number</span><input id="fChassis" maxlength="120" required></label>
+            <label class="field"><span class="field-label">Plate <em>optional</em></span><input id="fPlate" maxlength="40"></label>
+            <label class="field"><span class="field-label">Colour <em>optional</em></span><input id="fColor" maxlength="40"></label>
+            <label class="field"><span class="field-label">Odometer <em>optional</em></span><input id="fOdometer" maxlength="40"></label>
+            <label class="field"><span class="field-label">Registered in <em>optional</em></span><input id="fRegistration" maxlength="80"></label>
+          </div>
+
+          <h3 class="wizard-group">Seller</h3>
+          <div class="grid-2">
+            <label class="field"><span class="field-label">Name</span><input id="fSellerName" maxlength="120" required></label>
+            <label class="field"><span class="field-label">ID number <em>optional</em></span><input id="fSellerId" maxlength="60"></label>
+            <label class="field"><span class="field-label">Phone <em>optional</em></span><input id="fSellerPhone" maxlength="40" inputmode="tel"></label>
+            <label class="field"><span class="field-label">Address <em>optional</em></span><input id="fSellerAddress" maxlength="200"></label>
+          </div>
+
+          <h3 class="wizard-group">Buyer</h3>
+          <div class="grid-2">
+            <label class="field"><span class="field-label">Name</span><input id="fBuyerName" maxlength="120" required></label>
+            <label class="field"><span class="field-label">ID number <em>optional</em></span><input id="fBuyerId" maxlength="60"></label>
+            <label class="field"><span class="field-label">Phone <em>optional</em></span><input id="fBuyerPhone" maxlength="40" inputmode="tel"></label>
+            <label class="field"><span class="field-label">Address <em>optional</em></span><input id="fBuyerAddress" maxlength="200"></label>
+          </div>
+
+          <h3 class="wizard-group">Intermediary <em>optional</em></h3>
+          <div class="grid-2">
+            <label class="field"><span class="field-label">Name</span><input id="fIntermediaryName" maxlength="120"></label>
+            <label class="field"><span class="field-label">Phone</span><input id="fIntermediaryPhone" maxlength="40" inputmode="tel"></label>
+            <label class="field span-2"><span class="field-label">Commission</span><input id="fIntermediaryCommission" maxlength="120"></label>
+          </div>
+
+          <h3 class="wizard-group">Money</h3>
+          <div class="grid-2">
+            <label class="field"><span class="field-label">Agreed price <em id="fCurrency">AED</em></span><input id="fFull" inputmode="decimal" required></label>
+            <label class="field"><span class="field-label">Paid on signing</span><input id="fPaid" inputmode="decimal"></label>
+            <label class="field"><span class="field-label">Agreed in words <em>generated</em></span><input id="fFullWords" readonly></label>
+            <label class="field"><span class="field-label">Paid in words <em>generated</em></span><input id="fPaidWords" readonly></label>
+            <label class="field span-2"><span class="field-label">Balance <em>derived</em></span><input id="fBalance" readonly></label>
+          </div>
+
+          <label class="field"><span class="field-label">Notes <em>optional</em></span><textarea id="fNotes" rows="4" maxlength="600"></textarea></label>
+
+          <div class="card-actions">
+            <button class="btn primary" type="submit" id="saveBtn">Save changes</button>
+            <button class="btn ghost" type="button" id="refreshBtn">Refresh preview</button>
+          </div>
+        </form>
+        <p class="rail-note" id="formNote">The sheet is rendered from the template captured when this agreement was issued. Later template versions never change an existing agreement.</p>
+      </div>
+    </section>
+
+    <section class="panel preview-card">
+      <div class="card-head">
+        <h2>Print sheet · A4</h2>
+        <div class="card-head-tools">
+          <span class="chip" id="previewChip">210 × 297 mm</span>
+          <button class="btn primary small" id="printBtn" type="button">Print / PDF</button>
+        </div>
+      </div>
+      <div class="preview-stage" id="previewStage">
+        <div class="preview-frame" id="previewFrame">
+          <iframe id="preview" title="Agreement print preview"></iframe>
+        </div>
+      </div>
+      <p class="preview-note">
+        <span id="previewNote">Bilingual · letterhead ready</span>
+        <span>Browser print → Save as PDF</span>
+      </p>
+    </section>
+  </div>
+
+  <section class="panel activity-card" aria-labelledby="activityHeading">
+    <div class="card-head">
+      <h2 id="activityHeading">Activity</h2>
+      <span class="chip" id="activityChip">recent</span>
+    </div>
+    <div class="card-body">
+      <div class="audit-table-wrap">
+        <table class="audit-table">
+          <thead>
+            <tr><th scope="col">When</th><th scope="col">Who</th><th scope="col">What</th></tr>
+          </thead>
+          <tbody id="activityBody"></tbody>
+        </table>
+        <p class="empty" id="activityEmpty" hidden>
+          <b>No activity in the recent window</b>
+          The desk keeps the newest 200 events; an older record may have none listed here.
+        </p>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer class="app-version-footer">
+  <span class="app-version-label">Version 1.1.0</span>
+</footer>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+<script type="module" src="/agreement.js"></script>
+</body>
+</html>

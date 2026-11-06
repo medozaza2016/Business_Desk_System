@@ -135,7 +135,7 @@
     <footer class="landing-footer">
       <a class="landing-footer-brand" href="/">BUSINESS DESK</a>
       <span>Multi-company vehicle document management.</span>
-      <span class="app-version-label">Version 1.0.0</span>
+      <span class="app-version-label">Version 1.1.0</span>
       <a href="#login">Sign in ↑</a>
     </footer>
   </div>
@@ -171,9 +171,9 @@
         </div>
       </article>
 
-      <article class="module-choice module-choice-coming" role="button" tabindex="0" data-module="agreements" aria-label="View Vehicle Agreements preview">
+      <article class="module-choice module-choice-available" role="button" tabindex="0" data-module="agreements" aria-label="Open Vehicle Agreements">
         <div class="module-choice-top">
-          <span class="module-state future">Coming soon</span>
+          <span class="module-state">Available</span>
         </div>
         <div class="module-choice-mark module-choice-icon module-icon-agreement" aria-hidden="true">
           <svg viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -186,7 +186,7 @@
         <h2>Vehicle Agreements</h2>
         <p>Prepare vehicle purchase and sale agreements with buyer and seller details, vehicle specifications and agreed terms.</p>
         <div class="module-choice-hint">
-          <span>View module preview</span><span class="module-choice-arrow" aria-hidden="true">↗</span>
+          <span>Open Vehicle Agreements</span><span class="module-choice-arrow" aria-hidden="true">↗</span>
         </div>
       </article>
     </div>
@@ -194,36 +194,73 @@
     <footer class="module-hub-footer">
       <span>BUSINESS DESK</span>
       <span>Vehicle quotations and transaction agreements, kept distinct.</span>
-      <span class="app-version-label">Version 1.0.0</span>
+      <span class="app-version-label">Version 1.1.0</span>
     </footer>
   </div>
 </main>
 
-<main class="view module-preview" id="agreementsPreviewView" hidden>
-  <div class="module-preview-shell">
-    <button class="btn ghost small module-back" id="backToModules" type="button">← Back to modules</button>
-    <section class="module-preview-panel">
-      <div class="module-preview-kicker">
-        <span class="module-state future">Coming soon</span>
+<main class="view agreements" id="agreementsView" hidden>
+  <div class="agreements-wrap">
+    <header class="agreements-head">
+      <div class="agreements-title">
+        <p class="eyebrow">Vehicle agreements</p>
+        <h1 id="agreementsTitle">Sale agreements</h1>
+        <p class="agreements-lede" id="agreementsLede">Vehicles the company sells, priced and signed.</p>
       </div>
-      <div class="module-preview-mark module-choice-icon module-icon-agreement" aria-hidden="true">
-        <svg viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <path d="M13 6.5h25l12 12v38H13z" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"/>
-          <path d="M38 7v12h12" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"/>
-          <path d="M20 28h20M20 33h13M19 45h12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-          <path d="M34 46c3-5 5 3 8-2s5-1 7 1" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
-        </svg>
+      <div class="agreements-head-actions">
+        <button class="btn ghost small" id="agreementsBack" type="button">← Modules</button>
+        <button class="btn primary" id="newAgreementBtn" type="button">New agreement</button>
       </div>
-      <p class="eyebrow">Module preview</p>
-      <h1>Vehicle Agreements</h1>
-      <p class="module-preview-lede">A dedicated place to prepare and manage vehicle purchase and sale agreements.</p>
-      <p class="module-preview-copy">Structure each transaction around buyer and seller information, vehicle specifications, agreed price and payment terms, conditions and signatures. Agreement records will be managed separately from quotation records.</p>
-      <div class="module-preview-note">
-        <span class="module-preview-note-mark" aria-hidden="true">i</span>
-        <p>This module is not available yet. Your existing quotation workflow is unchanged.</p>
+    </header>
+
+    <section class="panel agreements-panel">
+      <div class="agreements-bar">
+        <div class="segmented" id="agreementKind" role="group" aria-label="Agreement book">
+          <button type="button" data-kind="sale" aria-pressed="true">Sale <b data-count="sale">0</b></button>
+          <button type="button" data-kind="purchase" aria-pressed="false">Purchase <b data-count="purchase">0</b></button>
+        </div>
+        <div class="segmented" id="agreementView" role="group" aria-label="Agreement records">
+          <button type="button" data-view="active" aria-pressed="true">Active</button>
+          <button type="button" data-view="deleted" aria-pressed="false">Deleted</button>
+        </div>
+        <form class="search" id="agreementSearchForm">
+          <input id="agreementSearch" type="search" placeholder="Number, model, chassis, plate, party" aria-label="Search agreements">
+          <button class="btn ghost small" type="submit">Search</button>
+        </form>
+        <div class="segmented" id="agreementSort" role="group" aria-label="Order the ledger">
+          <button type="button" data-sort="number" aria-pressed="true">No.</button>
+          <button type="button" data-sort="date" aria-pressed="false">Date</button>
+        </div>
+        <a class="btn ghost small" id="agreementCsv" href="#">Export CSV</a>
       </div>
-      <button class="btn primary" id="previewBackAction" type="button">Return to modules</button>
+
+      <div class="table-wrap agreements-table">
+        <table>
+          <thead>
+            <tr>
+              <th scope="col">Agreement</th>
+              <th scope="col">Date</th>
+              <th scope="col">Vehicle</th>
+              <th scope="col">Parties</th>
+              <th scope="col" class="money-head">Agreed</th>
+              <th scope="col" class="money-head">Balance</th>
+              <th scope="col" id="agreementActionsHead" hidden>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="agreementsBody"></tbody>
+        </table>
+        <p class="empty" id="agreementsEmpty" hidden>
+          <b>No agreements yet</b>
+          Start a sale or purchase agreement to keep the paper in one place.
+        </p>
+      </div>
     </section>
+
+    <p class="agreements-note">
+      <span>Numbers are allocated when an agreement is issued</span>
+      <span>SA- for sales · PA- for purchases</span>
+      <span>The signed page is filed against the record</span>
+    </p>
   </div>
 </main>
 
@@ -537,8 +574,141 @@
 </main>
 
 <footer class="app-version-footer" id="appVersionFooter" hidden>
-  <span class="app-version-label">Version 1.0.0</span>
+  <span class="app-version-label">Version 1.1.0</span>
 </footer>
+
+<dialog class="modal wizard" id="agreementWizard" aria-labelledby="awTitle">
+  <form class="wizard-card" id="awForm" novalidate>
+    <header class="wizard-head">
+      <div>
+        <p class="eyebrow">New agreement</p>
+        <h2 class="wizard-title" id="awTitle">Sale agreement</h2>
+      </div>
+      <button class="btn ghost small" id="awClose" type="button">Close</button>
+    </header>
+
+    <ol class="wizard-progress" id="awSteps">
+      <li data-step="1"><b>01</b><span>Paper</span></li>
+      <li data-step="2"><b>02</b><span>Vehicle</span></li>
+      <li data-step="3"><b>03</b><span>Parties</span></li>
+      <li data-step="4"><b>04</b><span>Money</span></li>
+      <li data-step="5"><b>05</b><span>Terms</span></li>
+      <li data-step="6"><b>06</b><span>Issue</span></li>
+    </ol>
+
+    <div class="wizard-body">
+      <section class="wizard-step" data-step="1">
+        <p class="wizard-lede">Which book does this paper belong in?</p>
+        <div class="choice-list" id="awKind">
+          <label class="choice">
+            <input type="radio" name="aw_kind" value="sale" checked>
+            <span><b>Sale agreement</b><em>The company sells the vehicle and receives the money.</em></span>
+          </label>
+          <label class="choice">
+            <input type="radio" name="aw_kind" value="purchase">
+            <span><b>Purchase agreement</b><em>The company buys the vehicle and pays the money.</em></span>
+          </label>
+        </div>
+        <div class="grid-2">
+          <label class="field"><span class="field-label">Agreement date</span><input id="awDate" type="date" required></label>
+          <label class="field">
+            <span class="field-label">Number <em>reserved at issue</em></span>
+            <span class="prefix read-only-number">
+              <span class="prefix-tag" aria-hidden="true">AUTO</span>
+              <input id="awNumber" type="text" readonly aria-readonly="true" placeholder="Allocating…"
+                title="Allocated by the desk when the agreement is issued.">
+            </span>
+          </label>
+        </div>
+        <p class="rail-note">The number is a preview only. It is allocated by the desk at the moment the agreement is issued, so another sheet issued first takes it.</p>
+      </section>
+
+      <section class="wizard-step" data-step="2" hidden>
+        <p class="wizard-lede">The vehicle exactly as it stands on the road.</p>
+        <div class="grid-2">
+          <label class="field span-2"><span class="field-label">Vehicle model</span><input id="awModel" maxlength="120" placeholder="AUDI A8"></label>
+          <label class="field"><span class="field-label">Year</span><input id="awYear" maxlength="20" inputmode="numeric" placeholder="2012"></label>
+          <label class="field"><span class="field-label">Chassis number</span><input id="awChassis" maxlength="120" placeholder="WAUZZZ4H0DN000001"></label>
+          <label class="field"><span class="field-label">Plate <em>optional</em></span><input id="awPlate" maxlength="40" placeholder="A 12345"></label>
+          <label class="field"><span class="field-label">Colour <em>optional</em></span><input id="awColor" maxlength="40" placeholder="Black"></label>
+          <label class="field"><span class="field-label">Odometer <em>optional</em></span><input id="awOdometer" maxlength="40" placeholder="142,000 km"></label>
+          <label class="field"><span class="field-label">Registered in <em>optional</em></span><input id="awRegistration" maxlength="80" placeholder="Dubai"></label>
+        </div>
+      </section>
+
+      <section class="wizard-step" data-step="3" hidden>
+        <p class="wizard-lede">Both sides of the deal, as they appear on their ID.</p>
+        <h3 class="wizard-group">Seller</h3>
+        <div class="grid-2">
+          <label class="field span-2"><span class="field-label">Full name</span><input id="awSellerName" maxlength="120" placeholder="Name on the ID"></label>
+          <label class="field"><span class="field-label">ID number <em>optional</em></span><input id="awSellerId" maxlength="60"></label>
+          <label class="field"><span class="field-label">Phone <em>optional</em></span><input id="awSellerPhone" maxlength="40" inputmode="tel"></label>
+          <label class="field span-2"><span class="field-label">Address <em>optional</em></span><input id="awSellerAddress" maxlength="200"></label>
+        </div>
+        <h3 class="wizard-group">Buyer</h3>
+        <div class="grid-2">
+          <label class="field span-2"><span class="field-label">Full name</span><input id="awBuyerName" maxlength="120" placeholder="Name on the ID"></label>
+          <label class="field"><span class="field-label">ID number <em>optional</em></span><input id="awBuyerId" maxlength="60"></label>
+          <label class="field"><span class="field-label">Phone <em>optional</em></span><input id="awBuyerPhone" maxlength="40" inputmode="tel"></label>
+          <label class="field span-2"><span class="field-label">Address <em>optional</em></span><input id="awBuyerAddress" maxlength="200"></label>
+        </div>
+        <h3 class="wizard-group">Intermediary <em>optional</em></h3>
+        <div class="grid-2">
+          <label class="field"><span class="field-label">Name</span><input id="awIntermediaryName" maxlength="120"></label>
+          <label class="field"><span class="field-label">Phone</span><input id="awIntermediaryPhone" maxlength="40" inputmode="tel"></label>
+          <label class="field span-2"><span class="field-label">Commission</span><input id="awIntermediaryCommission" maxlength="120" placeholder="AED 1,000 paid by the buyer"></label>
+        </div>
+      </section>
+
+
+      <section class="wizard-step" data-step="4" hidden>
+        <p class="wizard-lede">The agreed price, what is paid on signing, and what stays owed.</p>
+        <div class="grid-2">
+          <label class="field">
+            <span class="field-label">Agreed price <em id="awCurrency">AED</em></span>
+            <input id="awFull" inputmode="decimal" placeholder="185,000.00">
+          </label>
+          <label class="field">
+            <span class="field-label">Paid on signing <em>optional</em></span>
+            <input id="awPaid" inputmode="decimal" placeholder="5,000.00">
+          </label>
+        </div>
+        <p class="wizard-balance" id="awBalance">Enter the agreed price to see the balance.</p>
+        <p class="rail-note">Amounts are stored in minor units and the balance is never typed: the sheet prints the price, the deposit and the difference. Amounts in words are written by the desk at issue.</p>
+      </section>
+
+      <section class="wizard-step" data-step="5" hidden>
+        <p class="wizard-lede">Anything the printed sheet must say beyond the figures.</p>
+        <label class="field">
+          <span class="field-label">Notes <em>optional</em></span>
+          <textarea id="awNotes" rows="6" maxlength="600" placeholder="Delivery on 20 March, two keys and the service book handed over, export papers to follow."></textarea>
+        </label>
+        <p class="rail-note">Up to 600 characters. The note prints in its own block at the foot of the agreement.</p>
+      </section>
+
+      <section class="wizard-step" data-step="6" hidden>
+        <p class="wizard-lede">Read it once more. Issuing writes the record, freezes the paper and allocates the number.</p>
+        <div class="wizard-review-head">
+          <span>Number</span>
+          <b id="awNumberReview">allocated at issue</b>
+          <span class="chip" id="awCurrencyTag">AED</span>
+        </div>
+        <dl class="wizard-review" id="awReview"></dl>
+        <p class="rail-note">The template and the company profile are captured now: later changes to either never alter this sheet. Printing, scanning and sharing the signed copy all happen on the record page.</p>
+      </section>
+    </div>
+
+    <footer class="wizard-foot">
+      <p class="error" id="awError" role="alert" hidden></p>
+      <span class="wizard-count" id="awCount">Step 1 of 6</span>
+      <div class="wizard-actions">
+        <button class="btn ghost" id="awBack" type="button" hidden>Back</button>
+        <button class="btn primary" id="awNext" type="button">Continue</button>
+        <button class="btn primary" id="awCreate" type="submit" hidden>Issue agreement</button>
+      </div>
+    </footer>
+  </form>
+</dialog>
 
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 <script type="module" src="/app.js"></script>

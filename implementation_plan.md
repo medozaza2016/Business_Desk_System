@@ -1,93 +1,132 @@
-# Implementation plan — signed copy, WhatsApp hand-off, ledger order, completion
+# Vehicle Agreements module — implementation plan
 
-Status: **implemented**. This file records the plan that was approved before any code was written,
-so the decisions and their reasons stay next to the code.
+Status: implemented. Covers milestone 2 of the desk: vehicle **sale** and **purchase**
+agreements, built on the quotation workflow (kind-filtered ledger, 6-step wizard,
+two A4 templates rendered from the database, signed-copy scanning, share links and
+CSV parity).
 
-## Goal
+The quotation plan this replaces is in git history (`git log -p -- implementation_plan.md`).
 
-1. Store the **signed quotation** (the page the customer signed) against its record, captured with an
-   in-app scanner — no third-party SDK, no build step.
-2. A **WhatsApp send step**: the desk's default is either *attach the signed file* or *send a private
-   link*, switchable per send.
-3. **Sort the ledger by quotation number** (highest first), with `?sort=date` for the calendar order.
-4. **Mark a record completed** from the list and from the record page.
-5. **Redesign the record page** so the signed paper is the first thing on it.
+## 1. Goal
 
-## Confirmed decisions
+Give each company a second document type that behaves exactly like a quotation where
+it matters — numbering, printing, signed copies, public hand-off, retention — while
+carrying the fields an agreement needs: two parties, vehicle specification, agreed
+price, deposit/full payment and the balance.
 
-| Question | Decision | Why |
-|---|---|---|
-| How does a customer receive the paperwork? | Public tokenised page `/s/<token>` | WhatsApp links carry text only; a `wa.me` message can never include a file. The share sheet (mobile) does attach the file — so both paths exist, the page is the fallback and the *link* mode. |
-| What does "completed" mean? | Frozen: `PATCH`/`DELETE` refuse, reopening is explicit | The stamp on the paper claims the record is filed; letting the numbers drift afterwards would make the stamp a lie. |
-| Can a record be completed without a scan? | No — `409 scan_required` | A completed record with no signed page is exactly the case the feature exists to prevent. |
-| Where does the file/link choice live? | `settings.quotation_share_mode`, default `file` | One desk-wide default, overridden per send on the record page; no per-user state, matching the shared-passcode model. |
-| Do scans survive a cancelled record? | Yes (soft delete keeps them) | Recovering a cancelled quotation restores the whole record, paperwork included. |
+## 2. Confirmed decisions
 
-## Schema
+| Decision | Choice |
+| --- | --- |
+| Storage | **one** `agreements` table with a `kind` column (`sale` \| `purchase`) |
+| UI | **one** wizard and **one** record page for both kinds; the kind only changes labels and the default template |
+| Numbering | `agreement_sequences(company_id, kind, period)`, serial `00001`+, numbers `SA-<year>-00001` / `PA-<year>-00001` |
+| Quotation numbering | untouched (`quote_sequences`, company prefix, `QA-…`) |
+| Templates | `templates.kind` (`quotation` default). Settings studio keeps editing quotation templates; agreement templates are published through the API and snapshotted per record |
+| Money | stored as integer cents (`full_amount_cents`, `paid_amount_cents`); `balance` is **derived** on every read, never stored |
+| Deletion | soft delete → restore → permanent delete (confirm the agreement number), same as quotations |
+| Public link | new `/a/<token>` namespace; `/s/<token>` stays quotation-only |
+| Audit | `agreement.created/updated/cancelled/restored/permanently_deleted/completed/reopened/scan_uploaded/scan_removed/share_link_created/share_link_rotated/share_link_revoked` |
 
-- `migrations/0005_quotation_scans.sql` — `quotation_scans` keyed by `quotation_id` (one page per record;
-  a re-scan replaces it): `company_id, r2_key, content_type, bytes, width, height, source, created_at`.
-- `migrations/0006_quotation_workflow.sql` — `quotations.status` (`issued`/`completed`),
-  `completed_at`, `share_token`, `share_token_created_at`, plus a unique index on the token.
-  "Signed" is **derived** from the scan row, never stored, so the two cannot disagree.
+## 3. Schema — `migrations/0007_vehicle_agreements.sql`
 
-## Worker (`src/index.js`, `src/share-page.js`)
+- `ALTER TABLE templates ADD COLUMN kind TEXT NOT NULL DEFAULT 'quotation'` (+ index).
+- `agreements`: kind, number, date, vehicle block (model, year, chassis, plate, colour,
+  odometer, registration place), seller block, buyer block, optional intermediary,
+  `full_amount_cents`, `paid_amount_cents`, words columns, `currency`, `notes`,
+  `template_html_snapshot`, `company_snapshot_json`, status, `completed_at`,
+  `share_token(_created_at)`, timestamps, `deleted_at`.
+- Unique `(company_id, agreement_number)`; ledger index `(company_id, kind, agreement_date DESC, created_at DESC)`;
+  partial index on `share_token`.
+- `agreement_sequences(company_id, kind, period, last_number)` — primary key on the triple.
+- `agreement_scans(agreement_id, company_id, r2_key, content_type, bytes, width, height, source, created_at)`.
 
-- `IMAGE_TYPES` / `sniffImageType` shared by the logo and scan routes (signature check, not just the
-  declared content type).
-- Scan routes: `GET/POST/DELETE /api/quotations/:id/scan` (image ≤ 4 MB, PDF ≤ 12 MB, R2 under
-  `scans/<company>/…`, previous object deleted on replace, `etag` from the key suffix so a
-  re-scan busts caches). `SCAN_TYPES` is the logo’s `IMAGE_TYPES` plus `PDF_TYPE` (`%PDF`),
-  checked by signature rather than by the declared content type.
-- Workflow: `PATCH /api/quotations/:id/status`; `PATCH`/`DELETE` on a completed record return
-  `409 quotation_completed`.
-- Share link: `POST`/`DELETE /api/quotations/:id/share-link` — minted with the first scan, rotatable,
-  revocable. The raw token never leaves the Worker (payloads carry `share_path` only).
-- Public: `GET /s/<token>` (`src/share-page.js`, one inline-styled HTML document with `og:` tags,
-  `noindex`, `no-referrer`, tight CSP) and `/s/<token>/scan`. The page’s Print button is the only
-  script, pinned by CSP hash (`SHARE_PRINT_SCRIPT`); the old `/s/<token>/sheet` route is gone —
-  a picture signed copy is printed by the page itself. A PDF signed copy gets a plain link instead of
-  the script (`Print the PDF` → `/s/<token>/scan`, inline), because `window.print()` prints the HTML
-  in front of it and would leave the signed page out.
-- Settings: `GET`/`PATCH /api/settings` with `share_mode ∈ {file, link}`.
-- Ledger: `ORDER BY q.quote_number DESC` by default, `?sort=date` for the old order; the scan is joined
-  once per page so `has_scan` needs no second round-trip. CSV follows the number order.
+Nothing is seeded: an agreement printed before anyone publishes a template uses the
+built-in default HTML, which is still snapshotted into the record.
 
-## Client
+## 4. Worker (`src/index.js`)
 
-- `public/scan.js` — the scanner. Maths (`toGray`, `boxBlur`, `otsuThreshold`, `quadFromMask`,
-  `orderQuad`, `detectQuad`, `solveHomography`, `warpPage`, `flattenLighting`) is pure and unit-tested in
-  Node (`scripts/test-scan.mjs`); the camera shell streams the back camera at 8 fps detection on a 320 px
-  thumbnail, freezes the frame for corner dragging, then warps + flattens + JPEG-encodes at 1600 px.
-  No camera or no permission falls back to the phone's own picker, which runs the same warp.
-  `flattenLighting` is per channel, so a tungsten lamp no longer tints the paper yellow; `paperTone`
-  then applies the finish the operator picked: **Colour** (white paper, pen and stamp in colour) or
-  **Grey & white** (a plain photocopy). The control bar sits **above** the camera frame, because on a
-  phone the bottom of the screen belongs to the browser.
-- `public/quote.js` + `quote.html` — the signed copy is the first card: picture with crop marks, mono
-  measurements, send controls, completion stamp. The edit form freezes when completed.
-  Three ways in share one route: *Scan the signed page*, *Upload a photo* (the same correction without
-  the camera) and *Upload a PDF*; a PDF replaces the picture with a document tile.
-- `public/app.js` + `index.html` — ledger sort switch, state chip per row, a clickable line that opens the
-  record (no per-row buttons: print, complete and cancel live on the record), and a *WhatsApp hand-off*
-  settings pane.
-- `public/app.css` — signed card, segmented switch, scanner surface, settings choice list; responsive at
-  1180 / 980 / 760 / 640 / 480.
+Helpers (mirroring the quotation ones so the two paths read the same):
 
-## Verification performed
+- `agreementKindOf`, `agreementNumberFor`, `peekNextAgreementNumber`, `allocateAgreementSerial`
+- `decorateAgreement` (money + `DMY` date + `balance` + kind label)
+- `agreementPayload` (row + workflow block + live company), `agreementScanPayload`
+- `companyPrintFields` extracted from `buildPrintFields` so both print paths share the
+  branding rules; `buildAgreementPrintFields` adds the agreement placeholders.
 
-- `npm run test:scan` — 17 geometry tests (detection, ordering, homography, warp, lighting, the two
-  finishes).
-- `npm run test:share` — 5 render tests: a picture page prints itself, a PDF page hands the printing to
-  the file, a quotation without a signed copy says so, one hashed script per page.
-- `npm run typecheck` — Worker + client.
-- Backend smoke over a scratch D1 (`--persist-to /tmp/qtest`): setup → create → list order/flags →
-  scan upload (accept PNG, reject text) → byte serving with/without `download` → share page, scan, sheet,
-  junk token → completion guard, frozen patch, reopen → settings validation → link rotate/revoke →
-  scan delete → CSV.
-- Browser (Playwright, fake camera, 1280 / 768 / 390): gate → desk (chips, sort, no sideways scroll) →
-  record → live scan → review → corner drag → upload → complete (stamp, frozen form) → share link copied
-  and opened → WhatsApp fallback downloads the JPEG and opens the chat → print sheet renders.
-- Known pre-existing finding, untouched: the default print template links Google Fonts, which the sheet's
-  CSP blocks (`style-src 'unsafe-inline'`). Allowing remote CSS would weaken the sheet's lockdown, so the
-  fix belongs in a separate decision (self-host the Arabic faces, or drop the link).
+Routes under `/api/agreements`:
+
+| Method | Path | Notes |
+| --- | --- | --- |
+| GET | `/api/agreements?company_id&kind&view&sort&q` | ledger, active or deleted |
+| GET | `/api/agreements/next-number?company_id&kind&date` | read-only preview |
+| POST | `/api/agreements` | server allocates the number, snapshots template + company |
+| GET | `/api/agreements/:id` | record payload |
+| PATCH | `/api/agreements/:id` | edits (refused while completed) |
+| DELETE | `/api/agreements/:id` | cancel (soft delete) |
+| POST | `/api/agreements/:id/restore` | back to the ledger |
+| DELETE | `/api/agreements/:id/permanent` | confirm number, deletes scan + R2 object |
+| GET | `/api/agreements/:id/print` | A4 sheet, `?print=1` autoprints |
+| GET/POST/DELETE | `/api/agreements/:id/scan` | signed copy |
+| PATCH | `/api/agreements/:id/status` | completed / reopened (needs a scan to complete) |
+| POST/DELETE | `/api/agreements/:id/share-link` | mint/rotate, revoke |
+| GET | `/api/export/agreements.csv?company_id&kind` | CSV parity |
+
+Template routes learn `kind`: `GET /api/companies/:id/templates?kind=sale`,
+`POST …/templates` accepts `kind` (default `quotation`) and versions per kind,
+`POST /api/templates/:id/activate` scopes `active` to the template's own kind.
+Company permanent delete / delete-summary now count and remove agreements,
+agreement sequences and agreement scans.
+
+Public share: `/a/<token>` and `/a/<token>/scan`, rendered by `src/agreement-share.js`
+on the same shell as the quotation page.
+
+## 5. Templates
+
+`templates/default-sales-agreement.html` and `templates/default-purchase-agreement.html`
+— self-contained A4 documents (letterhead, logo, bilingual lockup, parties, vehicle,
+financial terms, terms, signatures), driven only by placeholders:
+
+`agreement_number`, `agreement_date`, `agreement_kind`, `vehicle_*`, `seller_*`,
+`buyer_*`, `intermediary_*`, `full_amount(_words)`, `paid_amount(_words)`,
+`balance(_words)`, `currency`, `has_intermediary`, `notes`, plus the shared
+`company_*` / `logo_url` / `logo_state` / `letterhead_url` block.
+
+## 6. Client
+
+- `public/index.html`: the “Coming soon” panel becomes the agreements ledger
+  (kind switch, search, sort, active/deleted views, CSV, “New agreement”), plus a
+  six-step wizard dialog.
+- `public/app.js`: agreements state, list rendering, restore/permanent delete,
+  wizard wiring, audit labels for the new actions.
+- `public/agreement-wizard.js`: steps — kind & date → vehicle → parties →
+  intermediary → money → review; purchase preselected for the purchase tab,
+  intermediary skippable.
+- `public/agreement.html` + `public/agreement.js`: record page mirroring `quote.html`
+  (signed copy first, editable details, A4 preview, WhatsApp hand-off).
+- `public/app.css`: ledger/wizard/record styles reusing existing tokens.
+
+## 7. Docs and version
+
+`docs/api.md` (agreement routes), `docs/template-placeholders.md` (agreement tokens),
+`docs/operations.md` (migration + rollback note), `public/version.json` and the footer
+labels move to **1.1.0**.
+
+## 8. Verification
+
+1. `npm run db:migrate:local` → 0007 applies cleanly.
+2. `npm run typecheck`.
+3. `wrangler dev` + curl: create/list/print/scan/status/share/export/cancel/restore/
+   permanent-delete for **both** kinds; quotation paths unchanged (`/api/quotations`,
+   `/s/<token>`, template studio).
+4. `npm test` — the 17 scan and 5 share assertions stay green.
+5. Browser walkthrough of modules → vehicle agreements → wizard → record → print.
+
+## 9. Risks
+
+- `templates.kind` touches six existing queries; each one is scoped explicitly and the
+  studio still lists only `kind='quotation'`.
+- One table for both kinds means every agreement query filters on `kind`; the number is
+  unique per company so a cross-kind leak would be a 409, not silent corruption.
+- Agreement share links share the scan-serving code with quotations, so the CSP and
+  cache headers cannot drift between the two.

@@ -12,6 +12,8 @@
  * @property {string} [confirm] label of the action button
  * @property {string} [cancel]  label of the safe button
  * @property {boolean} [danger] paint the action as destructive (default true)
+ * @property {string} [expectedText] when set, the user must type this exact text to arm the action
+ * @property {string} [inputLabel] label above the typed-confirmation box
  * @property {string} [copyLabel] optional copy button shown with typed confirmation
  */
 

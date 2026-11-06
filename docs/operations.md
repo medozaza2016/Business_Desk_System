@@ -5,9 +5,9 @@
 | Piece | Resource | Notes |
 |---|---|---|
 | Worker | `challenger-quotation-platform` | API + print rendering, custom domain `desk.luxoritpro.com` |
-| Static UI | Workers Assets (`env.STATIC`, `./public`) | `index.html`, `quote.html`, `app.css`, `app.js`, `quote.js`, letterhead |
-| Database | D1 `challenger-quotation-db` (`f8919c6e-a35e-4aa7-8178-dfb11e9303cf`) | 6 tables: `companies`, `templates`, `quote_sequences`, `quotations`, `settings`, `audit_events` |
-| Objects | R2 `challenger-quotation-assets` (`env.ASSETS`) | Reserved for per-company artwork; unused in this phase |
+| Static UI | Workers Assets (`env.STATIC`, `./public`) | `index.html`, `quote.html`, `agreement.html`, `app.css`, `app.js`, `quote.js`, `agreement.js`, `agreement-wizard.js`, `scan.js`, letterhead |
+| Database | D1 `challenger-quotation-db` (`f8919c6e-a35e-4aa7-8178-dfb11e9303cf`) | 10 tables: `companies`, `templates`, `quote_sequences`, `quotations`, `quotation_scans`, `agreements`, `agreement_scans`, `agreement_sequences`, `settings`, `audit_events` |
+| Objects | R2 `challenger-quotation-assets` (`env.ASSETS`) | Per-company logos (`logos/…`) and signed pages (`scans/…`, `scans/agreements/…`) |
 | Secrets | none | The shared passcode lives in D1, not in Worker secrets |
 
 `[observability] enabled = true` is set in `wrangler.toml`, so `console.*` output and request logs are
@@ -40,6 +40,7 @@ future `desk.*` application must always carry an explicit policy.
 npm install                       # once per machine
 npm run dev                       # local Worker on http://127.0.0.1:8787
 npm run db:migrate:local          # apply pending migrations to the local D1 copy
+npm test                          # scanner geometry, share page, agreement page
 npm run typecheck                 # src (Workers types) + public (DOM types)
 npm run deploy                    # upload Worker + assets
 npm run db:migrate:remote         # apply pending migrations to production D1
@@ -47,6 +48,11 @@ npm run db:migrate:remote         # apply pending migrations to production D1
 
 `npm run db:migrate:remote` prompts for confirmation; in a non-interactive shell wrangler takes the
 default answer, which is "yes".
+
+Every page states the build it is running at its foot (`Version 1.1.0`). The label comes from
+`public/version.json` through `public/version.js`, so a release bumps that JSON (and the matching
+fallback constant in `version.js`) and the desk, the quotation record and the agreement record are
+relabelled together.
 
 ## First-run procedure
 
@@ -81,16 +87,28 @@ cannot be claimed twice.
 ```bash
 # row counts
 npx wrangler d1 execute challenger-quotation-db --remote \
-  --command "SELECT (SELECT COUNT(*) FROM companies) AS companies, (SELECT COUNT(*) FROM quotations) AS quotations"
+  --command "SELECT (SELECT COUNT(*) FROM companies) AS companies, (SELECT COUNT(*) FROM quotations) AS quotations, (SELECT COUNT(*) FROM agreements) AS agreements"
 
 # recent audit trail
 npx wrangler d1 execute challenger-quotation-db --remote \
   --command "SELECT created_at, actor, action, entity_id FROM audit_events ORDER BY created_at DESC LIMIT 20"
 ```
 
-`audit_events` records `auth.setup`, `auth.passcode_rotated`, `company.created`, `company.updated`,
-`company.deactivated`, `template.saved`, `template.activated`, `quotation.created`, `quotation.updated`
-and `quotation.cancelled`. Writes are fire-and-forget through `ctx.waitUntil`, so a failed audit insert
+`audit_events` records every mutation, under one name per action:
+
+- **Desk** — `auth.setup`, `auth.passcode_rotated`, `settings.updated`
+- **Companies** — `company.created`, `company.updated`, `company.deactivated`, `company.logo_uploaded`,
+  `company.logo_removed`, `company.permanently_deleted`
+- **Templates** — `template.saved`, `template.activated`, `template.deleted`
+- **Quotations** — `quotation.created`, `quotation.updated`, `quotation.cancelled`, `quotation.restored`,
+  `quotation.permanently_deleted`, `quotation.completed`, `quotation.reopened`
+- **Agreements** — `agreement.created`, `agreement.updated`, `agreement.cancelled`, `agreement.restored`,
+  `agreement.permanently_deleted`, `agreement.completed`, `agreement.reopened`
+- **Signed pages and links** — `{quotation,agreement}.scan_uploaded`, `{quotation,agreement}.scan_removed`,
+  `{quotation,agreement}.share_link_created`, `{quotation,agreement}.share_link_rotated`,
+  `{quotation,agreement}.share_link_revoked`
+
+Writes are fire-and-forget through `ctx.waitUntil`, so a failed audit insert
 never fails a request. `actor` is `Shared user` for every browser session, because the desk collects
 only the passcode; `POST /api/setup` and `POST /api/auth/login` still accept an optional `name`, so
 scripted changes can be attributed.
@@ -107,6 +125,10 @@ A4 sheet. Replace it with the real artwork (A4 @ 150–300 dpi, header/footer al
 - *Print / PDF*, in the *Print sheet · A4* card head, opens `…/print?print=1`, which appends a four-line
   autoprint script and allows exactly that script via a `sha256` CSP hash. Browser → *Save as PDF* is the
   export path.
+- Agreements print through the same machinery (`/api/agreements/:id/print?print=1`), against their own
+  per-kind template and placeholder set — see
+  [`template-placeholders.md`](template-placeholders.md#agreement-placeholders). The record page
+  (`/agreement?id=…`) shows the same sheet in a scaled preview before it is printed.
 - Company templates can never execute JavaScript: `script-src` allows only the Worker's hash.
 
 ## Signed copies and share links
@@ -139,6 +161,29 @@ A4 sheet. Replace it with the real artwork (A4 @ 150–300 dpi, header/footer al
   it once the big page header scrolls away, so a long sheet never loses its name. Saving is the *Save
   changes* button under *Editable details*, beside the fields it writes — there is no second save elsewhere.
 
+### Agreements
+
+Agreements reuse every mechanism above and live beside the quotations rather than inside them:
+
+- Tables: `agreements`, `agreement_scans`, `agreement_sequences` (migration `0007_vehicle_agreements.sql`).
+  Templates are rows in the same `templates` table with `kind` = `sale` or `purchase`; a company that never
+  published one prints the built-in default sheet for that kind.
+- Signed pages live under `scans/agreements/<companyId>/<agreementId>-<random>.<ext>`, their own prefix
+  inside the bucket, so a sweep of one prefix can never touch the other. Same formats and ceilings
+  (pictures ≤ 4 MB, PDF ≤ 12 MB) and the same in-browser correction pipeline.
+- The customer link is `/a/<token>` (quotations keep `/s/<token>`), minted with the first signed copy and
+  rotatable or revocable from the record page. WhatsApp hand-off works exactly like a quotation: the desk
+  opens the share sheet or `wa.me`, nothing is sent on its own.
+- Workflow: *Mark completed* requires a filed signed page; a completed agreement refuses edits and
+  cancellation until it is reopened. *Cancel* moves the record to the **Cancelled** view of the ledger, where
+  it can be restored or permanently deleted (number typed back) together with its signed file.
+- `agreement_sequences` mirrors `quote_sequences`: one counter per company, kind and year, so `SA-` and
+  `PA-` numbers never collide and cancelling a record never recycles its number.
+- The sheet is **snapshotted when the agreement is created** (`template_html_snapshot`), exactly like a
+  quotation: editing `templates/default-sales-agreement.html` or publishing a new version changes the next
+  agreement only, never the paper behind an existing one. Amounts stay in step with their words because
+  both are rewritten together, and `{{balance}}` / `{{balance_words}}` are recomputed on every print.
+
 ## Troubleshooting
 
 | Symptom | Cause | Fix |
@@ -152,11 +197,18 @@ A4 sheet. Replace it with the real artwork (A4 @ 150–300 dpi, header/footer al
 | Scanner shows no page outline | flat lighting, or the sheet already fills the frame | keep shooting: a capture without a detected page still straightens the whole frame |
 | *Send on WhatsApp* only downloads | the browser has no `navigator.canShare({files})` (most desktops) | attach the downloaded picture in WhatsApp — the caption is already copied |
 | `/s/<token>` says "no longer active" | token rotated, revoked, or the record cancelled | mint a fresh link from the record page |
+| `/a/<token>` says "no longer active" | token rotated/revoked, or the agreement cancelled — `/a/` is the agreement namespace, `/s/` the quotation one | mint a fresh link from the agreement record |
+| Completing answers `409 scan_required` | no signed page is filed on the record | file the scan or PDF first — the guard is deliberate, a completed record is the evidence |
+| Editing or cancelling answers `409 agreement_completed` | `agreement` is completed and frozen | reopen it on the record page first |
 
 ## Recovery
 
 - Quotations are soft-deleted (`deleted_at`); restore with
   `UPDATE quotations SET deleted_at=NULL WHERE quote_number='…'`.
+- Agreements work the same way: `UPDATE agreements SET deleted_at=NULL WHERE agreement_number='SA-…'`
+  (or `PA-…`). *Cancel* is a soft delete on this book too — the ledger's **Cancelled** view filters
+  `deleted_at IS NOT NULL` — so restoring clears that one column and the record returns to the active
+  view with its number, sheet and signed page untouched.
 - Companies are soft-deactivated (`active=0`); re-activate with
   `UPDATE companies SET active=1 WHERE id='…'`.
 - Template versions are append-only. Publishing a new version never destroys history, and any earlier

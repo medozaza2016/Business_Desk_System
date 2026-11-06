@@ -9,9 +9,10 @@ Live: <https://desk.luxoritpro.com>
 
 - **Cloudflare Workers** — API, print rendering, all routing
 - **Workers Assets** (`./public`) — the desk UI, no framework, no build step
-- **D1** — `companies`, `templates`, `quote_sequences`, `quotations`, `quotation_scans`, `settings`, `audit_events`
-- **R2** (`ASSETS`) — per-company logos (`logos/…`) and signed pages (`scans/…`), validated PNG/JPEG/WebP,
-  plus PDF for a signed page
+- **D1** — `companies`, `templates`, `quote_sequences`, `quotations`, `quotation_scans`, `agreements`,
+  `agreement_scans`, `agreement_sequences`, `settings`, `audit_events`
+- **R2** (`ASSETS`) — per-company logos (`logos/…`) and signed pages (`scans/<company>/…`, agreements under
+  `scans/agreements/<company>/…`), validated PNG/JPEG/WebP, plus PDF for a signed page
 - Authentication: one shared passcode, PBKDF2-SHA256 (100,000 iterations), stateless HMAC session cookie
 
 ## Features
@@ -46,6 +47,14 @@ Live: <https://desk.luxoritpro.com>
   each row shows whether the paperwork is unsigned, signed or completed. A row carries no buttons: the
   whole line opens the record (the number inside stays a real link, so the keyboard keeps its own route),
   and print, complete and cancel live on that record page.
+- **Vehicle sale and purchase agreements** — a second book beside the quotations, with its own numbering
+  (`SA-2026-00001` / `PA-2026-00001`, one counter per company, kind and year), its own per-kind templates
+  and placeholders, and a six-step wizard (paper → vehicle → parties → money → terms → issue) that
+  previews the sheet before it is issued. The record page (`/agreement?id=…`) edits the details, files the
+  signed page through the same scanner, prints the A4 sheet, hands the paperwork to WhatsApp as a file or
+  as a private `/a/<token>` link, and shows that record's audit trail. Both books share the ledger
+  machinery: search, cancelled view, restore, permanent delete with the number typed back, CSV export,
+  and the same *issued → completed* workflow.
 
 ## Quick start
 
@@ -87,12 +96,22 @@ src/index.js                      Worker: auth, API, print rendering, scan + sha
 src/share-page.js                 The public /s/<token> page (one HTML document)
 src/types.d.ts                    *.html text-module declaration
 templates/default-quotation.html  Bilingual A4 sheet (seeded as template v1)
-public/index.html                 Desk: passcode gate, workspace, settings
+templates/default-sales-agreement.html, default-purchase-agreement.html
+                                  Built-in agreement sheets (snapshotted when a company has published none)
+public/index.html                 Desk: passcode gate, workspace, settings, agreement wizard
 public/quote.html                 Quotation record + signed copy + live A4 preview
+public/agreement.html             Agreement record + signed copy + print preview + audit
 public/app.css                    Design system ("precision paperwork")
 public/app.js, public/quote.js    Client logic
+public/agreement.js, public/agreement-wizard.js
+                                  Agreement record and its six-step wizard
+public/version.js                 The one build-label loader every page footer uses
 public/scan.js                    In-app scanner: detection maths + camera shell
+public/dialog.js                  The confirm dialog (typed confirmation for deletes)
+public/globals.d.ts               Ambient browser globals (Turnstile) for the typecheck
 scripts/test-scan.mjs             Node unit tests for the scan geometry
+scripts/test-share.mjs            Node unit tests for the public share page
+scripts/test-agreement-share.mjs  Node unit tests for the public agreement page
 migrations/                       D1 schema, forward-only
 docs/                             API, templates, operations, PRD
 ```
@@ -102,7 +121,8 @@ docs/                             API, templates, operations, PRD
 ```bash
 npm run test:scan            # scanner geometry (detect, homography, warp, lighting)
 npm run test:share           # the three shapes of the public share page
-npm test                     # both
+npm run test:agreement-share # the public agreement page: picture, PDF, no signed copy
+npm test                     # all three
 npm run typecheck            # tsc over the Worker and the client modules
 ```
 

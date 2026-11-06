@@ -5,6 +5,7 @@
 
 import { confirmAction } from "./dialog.js";
 import { openScanner, processPhotoFile } from "./scan.js";
+import { loadAppVersion } from "./version.js";
 
 /** @param {string} id @returns {any} */
 const $ = (id) => document.getElementById(id);
@@ -616,6 +617,7 @@ if (recordNumber && "IntersectionObserver" in window) {
 }
 
 fitPreview();
+loadAppVersion();
 load();
 
 export {};

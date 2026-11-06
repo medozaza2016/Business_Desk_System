@@ -1,10 +1,14 @@
 import DEFAULT_TEMPLATE from "../templates/default-quotation.html";
+import DEFAULT_SALES_AGREEMENT from "../templates/default-sales-agreement.html";
+import DEFAULT_PURCHASE_AGREEMENT from "../templates/default-purchase-agreement.html";
 import { renderSharePage, renderShareMissing, SHARE_PRINT_SCRIPT } from "./share-page.js";
+import { renderAgreementSharePage, renderAgreementShareMissing } from "./agreement-share.js";
 
 /* --------------------------------------------------------------------------
    Challenger Quotation Platform - Cloudflare Worker
    - Auth: one shared passcode (settings table) + stateless HMAC session cookie
-   - Data: D1 (companies, templates, quote_sequences, quotations, audit_events)
+   - Data: D1 (companies, templates, quote_sequences, quotations, agreement_*,
+     audit_events)
    - Print: hydrated HTML snapshot + A4 bilingual sheet, printed by the browser
    -------------------------------------------------------------------------- */
 
@@ -34,6 +38,34 @@ const DEFAULT_SHARE_MODE = "file";
 /* 24 random bytes -> 32 base64url characters: far too many to guess, short enough to paste. */
 const SHARE_TOKEN_BYTES = 24;
 const QUOTATION_STATUSES = ["issued", "completed"];
+/* ---------------------------- vehicle agreements ---------------------------- */
+/* One table, two kinds. The kind decides the number prefix, the default template
+   and the wording, never the shape of the record. */
+const AGREEMENT_KINDS = ["sale", "purchase"];
+const AGREEMENT_KIND_LABELS = { sale: "Sale", purchase: "Purchase" };
+/* SA-2026-00001 / PA-2026-00001: one counter per company, kind and year. */
+const AGREEMENT_PREFIX = { sale: "SA-", purchase: "PA-" };
+const AGREEMENT_STATUSES = ["issued", "completed"];
+const DEFAULT_AGREEMENT_TEMPLATES = {
+  sale: DEFAULT_SALES_AGREEMENT,
+  purchase: DEFAULT_PURCHASE_AGREEMENT,
+};
+/* The free-text columns and their ceilings, in one place so create and patch agree. */
+const AGREEMENT_TEXT_LIMITS = {
+  vehicle_model: 120, vehicle_year: 20, vehicle_chassis: 120, vehicle_plate: 40,
+  vehicle_color: 40, vehicle_odometer: 40, vehicle_registration_place: 80,
+  seller_name: 120, seller_id_number: 60, seller_phone: 40, seller_address: 200,
+  buyer_name: 120, buyer_id_number: 60, buyer_phone: 40, buyer_address: 200,
+  intermediary_name: 120, intermediary_phone: 40, intermediary_commission: 120,
+};
+/* Required on every agreement; the rest may stay blank and simply print empty. */
+const AGREEMENT_REQUIRED_TEXT = ["vehicle_model", "vehicle_year", "vehicle_chassis", "seller_name", "buyer_name"];
+const MAX_AGREEMENT_NOTES = 600;
+/* Signed pages live beside the quotation scans but under their own prefix, so a sweep
+   of "scans/agreements/" can never touch a quotation scan. */
+const AGREEMENT_SCAN_PREFIX = "scans/agreements/";
+const TEMPLATE_KINDS = ["quotation", ...AGREEMENT_KINDS];
+
 /* A template may print {{logo_url}} even when the company has no logo. Pointing at a
    1x1 transparent GIF keeps the sheet clean instead of showing a broken-image icon. */
 const TRANSPARENT_PIXEL = "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
@@ -616,19 +648,23 @@ const handleCompanyDeleteSummary = async (env, companyId) => {
     "SELECT id,name,slug,logo_key,letterhead_key,font_key FROM companies WHERE id=?"
   ).bind(companyId).first();
   if (!company) return json({ error: "company_not_found" }, 404);
-  const [quotes, templates, sequences, scans] = await Promise.all([
+  const [quotes, templates, sequences, scans, agreements, agreementSequences, agreementScans] = await Promise.all([
     env.DB.prepare("SELECT COUNT(*) AS n FROM quotations WHERE company_id=?").bind(companyId).first(),
     env.DB.prepare("SELECT COUNT(*) AS n FROM templates WHERE company_id=?").bind(companyId).first(),
     env.DB.prepare("SELECT COUNT(*) AS n FROM quote_sequences WHERE company_id=?").bind(companyId).first(),
     env.DB.prepare("SELECT COUNT(*) AS n FROM quotation_scans WHERE company_id=?").bind(companyId).first(),
+    env.DB.prepare("SELECT COUNT(*) AS n FROM agreements WHERE company_id=?").bind(companyId).first(),
+    env.DB.prepare("SELECT COUNT(*) AS n FROM agreement_sequences WHERE company_id=?").bind(companyId).first(),
+    env.DB.prepare("SELECT COUNT(*) AS n FROM agreement_scans WHERE company_id=?").bind(companyId).first(),
   ]);
   const companyAssets = [company.logo_key, company.letterhead_key, company.font_key].filter(Boolean);
   return json({
     company: { id: company.id, name: company.name, slug: company.slug },
     quotations: Number(quotes?.n || 0),
+    agreements: Number(agreements?.n || 0),
     templates: Number(templates?.n || 0),
-    numbering_sequences: Number(sequences?.n || 0),
-    signed_scans: Number(scans?.n || 0),
+    numbering_sequences: Number(sequences?.n || 0) + Number(agreementSequences?.n || 0),
+    signed_scans: Number(scans?.n || 0) + Number(agreementScans?.n || 0),
     company_files: new Set(companyAssets).size,
     audit_events: "retained",
   });
@@ -649,28 +685,36 @@ const handleCompanyPermanentDelete = async (request, env, session, companyId) =>
     return json({ error: "company_confirmation_required" }, 409);
   }
 
-  const [quoteCount, templateCount, sequenceCount, scanRows] = await Promise.all([
+  const [quoteCount, templateCount, sequenceCount, scanRows, agreementCount, agreementSequenceCount, agreementScanRows] = await Promise.all([
     env.DB.prepare("SELECT COUNT(*) AS n FROM quotations WHERE company_id=?").bind(companyId).first(),
     env.DB.prepare("SELECT COUNT(*) AS n FROM templates WHERE company_id=?").bind(companyId).first(),
     env.DB.prepare("SELECT COUNT(*) AS n FROM quote_sequences WHERE company_id=?").bind(companyId).first(),
     env.DB.prepare("SELECT r2_key FROM quotation_scans WHERE company_id=?").bind(companyId).all(),
+    env.DB.prepare("SELECT COUNT(*) AS n FROM agreements WHERE company_id=?").bind(companyId).first(),
+    env.DB.prepare("SELECT COUNT(*) AS n FROM agreement_sequences WHERE company_id=?").bind(companyId).first(),
+    env.DB.prepare("SELECT r2_key FROM agreement_scans WHERE company_id=?").bind(companyId).all(),
   ]);
   const companyAssetKeys = [...new Set([
     company.logo_key, company.letterhead_key, company.font_key,
   ].filter(Boolean))];
-  const scanAssetKeys = [...new Set((scanRows.results || []).map((row) => row.r2_key).filter(Boolean))];
+  const scanAssetKeys = [...new Set([
+    ...(scanRows.results || []).map((row) => row.r2_key),
+    ...(agreementScanRows.results || []).map((row) => row.r2_key),
+  ].filter(Boolean))];
   const assetKeys = [...new Set([...companyAssetKeys, ...scanAssetKeys])];
   if (assetKeys.length && !env.ASSETS) return json({ error: "storage_unavailable" }, 503);
 
   const quotationsDeleted = Number(quoteCount?.n || 0);
   const templatesDeleted = Number(templateCount?.n || 0);
-  const sequencesDeleted = Number(sequenceCount?.n || 0);
-  const scansDeleted = (scanRows.results || []).length;
+  const sequencesDeleted = Number(sequenceCount?.n || 0) + Number(agreementSequenceCount?.n || 0);
+  const agreementsDeleted = Number(agreementCount?.n || 0);
+  const scansDeleted = (scanRows.results || []).length + (agreementScanRows.results || []).length;
   const auditId = crypto.randomUUID();
   const details = {
     name: company.name,
     slug: company.slug,
     quotations_deleted: quotationsDeleted,
+    agreements_deleted: agreementsDeleted,
     templates_deleted: templatesDeleted,
     numbering_sequences_deleted: sequencesDeleted,
     signed_scans_deleted: scansDeleted,
@@ -688,7 +732,15 @@ const handleCompanyPermanentDelete = async (request, env, session, companyId) =>
       "AND EXISTS (SELECT 1 FROM companies WHERE id=?)"
     ).bind(companyId, companyId),
     env.DB.prepare(
+      "DELETE FROM agreement_scans WHERE company_id=? " +
+      "AND EXISTS (SELECT 1 FROM companies WHERE id=?)"
+    ).bind(companyId, companyId),
+    env.DB.prepare(
       "DELETE FROM quotations WHERE company_id=? " +
+      "AND EXISTS (SELECT 1 FROM companies WHERE id=?)"
+    ).bind(companyId, companyId),
+    env.DB.prepare(
+      "DELETE FROM agreements WHERE company_id=? " +
       "AND EXISTS (SELECT 1 FROM companies WHERE id=?)"
     ).bind(companyId, companyId),
     env.DB.prepare(
@@ -699,9 +751,13 @@ const handleCompanyPermanentDelete = async (request, env, session, companyId) =>
       "DELETE FROM quote_sequences WHERE company_id=? " +
       "AND EXISTS (SELECT 1 FROM companies WHERE id=?)"
     ).bind(companyId, companyId),
+    env.DB.prepare(
+      "DELETE FROM agreement_sequences WHERE company_id=? " +
+      "AND EXISTS (SELECT 1 FROM companies WHERE id=?)"
+    ).bind(companyId, companyId),
     env.DB.prepare("DELETE FROM companies WHERE id=?").bind(companyId),
   ]);
-  if (!results[5]?.meta || results[5].meta.changes === 0) {
+  if (!results[8]?.meta || results[8].meta.changes === 0) {
     return json({ error: "company_not_found" }, 404);
   }
 
@@ -728,6 +784,7 @@ const handleCompanyPermanentDelete = async (request, env, session, companyId) =>
     deleted: true,
     company: { id: companyId, name: company.name },
     quotations_deleted: quotationsDeleted,
+    agreements_deleted: agreementsDeleted,
     templates_deleted: templatesDeleted,
     numbering_sequences_deleted: sequencesDeleted,
     signed_scans_deleted: scansDeleted,
@@ -812,7 +869,7 @@ const handleCompanyLogoUpload = async (request, env, ctx, session, companyId) =>
   /* Templates issued before the logo slot existed never ask for {{logo_url}}, so the
      operator is told instead of silently getting a sheet without the new mark. */
   const active = await env.DB.prepare(
-    "SELECT html FROM templates WHERE company_id=? AND active=1 ORDER BY version DESC LIMIT 1"
+    "SELECT html FROM templates WHERE company_id=? AND kind='quotation' AND active=1 ORDER BY version DESC LIMIT 1"
   ).bind(companyId).first();
   const template_uses_logo = active ? /\{\{\s*logo_url\s*\}\}/.test(active.html) : false;
   const updated = await env.DB.prepare(`SELECT ${COMPANY_COLUMNS} FROM companies WHERE id=?`).bind(companyId).first();
@@ -838,16 +895,24 @@ const handleCompanyLogoDelete = async (env, ctx, session, companyId) => {
 
 /* ============================ templates ============================ */
 
-const handleTemplateList = async (env, companyId) => {
+const templateKindOf = (value) => {
+  const kind = typeof value === "string" ? value.trim().toLowerCase() : "";
+  return TEMPLATE_KINDS.includes(kind) ? kind : "quotation";
+};
+
+/* The settings studio only ever lists quotation templates; agreement templates are
+   published through the API and are reached by kind. */
+const handleTemplateList = async (env, companyId, kind = "quotation") => {
   const rows = await env.DB.prepare(
-    "SELECT id,name,version,active,created_at,length(html) AS bytes FROM templates WHERE company_id=? ORDER BY version DESC"
-  ).bind(companyId).all();
+    "SELECT id,name,kind,version,active,created_at,length(html) AS bytes FROM templates " +
+    "WHERE company_id=? AND kind=? ORDER BY version DESC"
+  ).bind(companyId, templateKindOf(kind)).all();
   return json({ templates: rows.results || [] });
 };
 
 const handleTemplateGet = async (env, companyId, templateId) => {
   const row = await env.DB.prepare(
-    "SELECT id,company_id,name,version,active,html,created_at FROM templates WHERE id=? AND company_id=?"
+    "SELECT id,company_id,name,kind,version,active,html,created_at FROM templates WHERE id=? AND company_id=?"
   ).bind(templateId, companyId).first();
   return row ? json({ template: row }) : json({ error: "template_not_found" }, 404);
 };
@@ -859,31 +924,37 @@ const handleTemplateSave = async (request, env, ctx, session, companyId) => {
   if (html.length > MAX_TEMPLATE_BYTES) return json({ error: "template_too_large" }, 413);
   const company = await env.DB.prepare("SELECT id FROM companies WHERE id=?").bind(companyId).first();
   if (!company) return json({ error: "company_not_found" }, 404);
-  const versionRow = await env.DB.prepare("SELECT COALESCE(MAX(version),0)+1 AS next FROM templates WHERE company_id=?")
-    .bind(companyId).first();
+  /* Versions count per kind: publishing a sale agreement never pushes the quotation
+     template to v7, and each kind keeps its own live version. */
+  const kind = templateKindOf(body?.kind);
+  const versionRow = await env.DB.prepare(
+    "SELECT COALESCE(MAX(version),0)+1 AS next FROM templates WHERE company_id=? AND kind=?"
+  ).bind(companyId, kind).first();
   const version = Number(versionRow?.next) || 1;
   const id = crypto.randomUUID();
   const name = text(body?.name, 100) || `Version ${version}`;
   const activate = body?.activate !== false;
   const statements = [];
-  if (activate) statements.push(env.DB.prepare("UPDATE templates SET active=0 WHERE company_id=?").bind(companyId));
+  if (activate) statements.push(
+    env.DB.prepare("UPDATE templates SET active=0 WHERE company_id=? AND kind=?").bind(companyId, kind)
+  );
   statements.push(
-    env.DB.prepare("INSERT INTO templates(id,company_id,name,version,html,active) VALUES(?,?,?,?,?,?)")
-      .bind(id, companyId, name, version, html, activate ? 1 : 0)
+    env.DB.prepare("INSERT INTO templates(id,company_id,name,kind,version,html,active) VALUES(?,?,?,?,?,?,?)")
+      .bind(id, companyId, name, kind, version, html, activate ? 1 : 0)
   );
   await env.DB.batch(statements);
-  audit(env, ctx, session.name, "template.saved", "template", id, { company_id: companyId, version, active: activate });
-  return json({ template: { id, name, version, active: activate } }, 201);
+  audit(env, ctx, session.name, "template.saved", "template", id, { company_id: companyId, kind, version, active: activate });
+  return json({ template: { id, name, kind, version, active: activate } }, 201);
 };
 
 const handleTemplateActivate = async (env, ctx, session, templateId) => {
-  const row = await env.DB.prepare("SELECT id,company_id FROM templates WHERE id=?").bind(templateId).first();
+  const row = await env.DB.prepare("SELECT id,company_id,kind FROM templates WHERE id=?").bind(templateId).first();
   if (!row) return json({ error: "template_not_found" }, 404);
   await env.DB.batch([
-    env.DB.prepare("UPDATE templates SET active=0 WHERE company_id=?").bind(row.company_id),
+    env.DB.prepare("UPDATE templates SET active=0 WHERE company_id=? AND kind=?").bind(row.company_id, row.kind),
     env.DB.prepare("UPDATE templates SET active=1 WHERE id=?").bind(templateId),
   ]);
-  audit(env, ctx, session.name, "template.activated", "template", templateId, { company_id: row.company_id });
+  audit(env, ctx, session.name, "template.activated", "template", templateId, { company_id: row.company_id, kind: row.kind });
   return json({ activated: templateId });
 };
 
@@ -957,19 +1028,26 @@ const handleTemplatePreviewVersion = async (env, companyId, templateId) => {
  * HTML snapshot, so records are detached (template_id -> NULL) instead of blocking.
  */
 const handleTemplateDelete = async (env, ctx, session, companyId, templateId) => {
-  const row = await env.DB.prepare("SELECT id,version,active FROM templates WHERE id=? AND company_id=?")
+  const row = await env.DB.prepare("SELECT id,version,active,kind FROM templates WHERE id=? AND company_id=?")
     .bind(templateId, companyId).first();
   if (!row) return json({ error: "template_not_found" }, 404);
   if (row.active) return json({ error: "template_is_active" }, 409);
-  const inUse = await env.DB.prepare("SELECT COUNT(*) AS n FROM quotations WHERE template_id=?")
-    .bind(templateId).first();
+  /* Records keep their own HTML snapshot, so deleting a version detaches them instead
+     of blocking. Agreements are only detachable from agreement templates. */
+  const inUse = row.kind === "quotation"
+    ? await env.DB.prepare("SELECT COUNT(*) AS n FROM quotations WHERE template_id=?").bind(templateId).first()
+    : await env.DB.prepare("SELECT COUNT(*) AS n FROM agreements WHERE template_id=?").bind(templateId).first();
   const detached = Number(inUse?.n || 0);
-  await env.DB.batch([
-    env.DB.prepare("UPDATE quotations SET template_id=NULL WHERE template_id=?").bind(templateId),
-    env.DB.prepare("DELETE FROM templates WHERE id=? AND company_id=?").bind(templateId, companyId),
-  ]);
+  const statements = [];
+  if (row.kind === "quotation") {
+    statements.push(env.DB.prepare("UPDATE quotations SET template_id=NULL WHERE template_id=?").bind(templateId));
+  } else {
+    statements.push(env.DB.prepare("UPDATE agreements SET template_id=NULL WHERE template_id=?").bind(templateId));
+  }
+  statements.push(env.DB.prepare("DELETE FROM templates WHERE id=? AND company_id=?").bind(templateId, companyId));
+  await env.DB.batch(statements);
   audit(env, ctx, session.name, "template.deleted", "template", templateId, {
-    company_id: companyId, version: row.version, detached_records: detached,
+    company_id: companyId, kind: row.kind, version: row.version, detached_records: detached,
   });
   return json({ deleted: templateId, version: row.version, detached_records: detached });
 };
@@ -1100,7 +1178,7 @@ const handleQuotationCreate = async (request, env, ctx, session) => {
   }
   if (!quoteNumber) return json({ error: "numbering_exhausted" }, 409);
   const template = await env.DB.prepare(
-    "SELECT id,html FROM templates WHERE company_id=? AND active=1 ORDER BY version DESC LIMIT 1"
+    "SELECT id,html FROM templates WHERE company_id=? AND kind='quotation' AND active=1 ORDER BY version DESC LIMIT 1"
   ).bind(company.id).first();
   const amountWords = amountWordsFromCents(cents);
   const snapshot = {
@@ -1542,8 +1620,748 @@ const handleShareLinkRevoke = async (env, ctx, session, id) => {
 };
 
 
+/* ========================= vehicle agreements ========================= */
+/* Sale and purchase agreements share one table, one numbering scheme per kind and
+   one set of handlers. Numbers come from the server (SA-/PA- + year + serial), the
+   template and the company profile are snapshotted at issue time, and the signed
+   copy follows the same "one page per record" rule as quotations. */
+
+const agreementKindOf = (value) => {
+  const kind = typeof value === "string" ? value.trim().toLowerCase() : "";
+  return AGREEMENT_KINDS.includes(kind) ? kind : "";
+};
+
+/** Blank counts as zero: a deposit may legitimately be left out of a purchase. */
+const amountOrZero = (value) => {
+  if (value === undefined || value === null || String(value).trim() === "") return 0;
+  return parseAmountToCents(value);
+};
+
+const agreementNumberFor = (kind, period, serial) =>
+  `${AGREEMENT_PREFIX[kind] || "AG-"}${period}-${String(serial).padStart(5, "0")}`;
+
+/** Read-only numbering preview: never advances the counter. */
+const peekNextAgreementNumber = async (env, companyId, kind, date) => {
+  const period = String(date).slice(0, 4);
+  const row = await env.DB.prepare(
+    "SELECT last_number FROM agreement_sequences WHERE company_id=? AND kind=? AND period=?"
+  ).bind(companyId, kind, period).first();
+  const next = Number(row?.last_number || 0) + 1;
+  return { period, next_serial: next, agreement_number: agreementNumberFor(kind, period, next) };
+};
+
+const allocateAgreementSerial = async (env, companyId, kind, period) => {
+  const results = await env.DB.batch([
+    env.DB.prepare(
+      "INSERT INTO agreement_sequences(company_id,kind,period,last_number) VALUES(?,?,?,1) " +
+      "ON CONFLICT(company_id,kind,period) DO UPDATE SET last_number=last_number+1"
+    ).bind(companyId, kind, period),
+    env.DB.prepare("SELECT last_number FROM agreement_sequences WHERE company_id=? AND kind=? AND period=?")
+      .bind(companyId, kind, period),
+  ]);
+  return Number(results[1]?.results?.[0]?.last_number || 1);
+};
+
+const AGREEMENT_COLUMNS =
+  "id,company_id,kind,template_id,agreement_number,agreement_date," +
+  "vehicle_model,vehicle_year,vehicle_chassis,vehicle_plate,vehicle_color,vehicle_odometer," +
+  "vehicle_registration_place,seller_name,seller_id_number,seller_phone,seller_address," +
+  "buyer_name,buyer_id_number,buyer_phone,buyer_address," +
+  "intermediary_name,intermediary_phone,intermediary_commission," +
+  "full_amount_cents,paid_amount_cents,full_amount_words,paid_amount_words,currency,notes," +
+  "company_snapshot_json,status,completed_at,share_token,share_token_created_at,created_at,updated_at";
+
+/* One list drives the INSERT column order, the value order and the placeholder count,
+   so the three can never drift apart. */
+const AGREEMENT_FIELDS = [
+  "id", "company_id", "kind", "template_id", "agreement_number", "agreement_date",
+  "vehicle_model", "vehicle_year", "vehicle_chassis", "vehicle_plate", "vehicle_color",
+  "vehicle_odometer", "vehicle_registration_place",
+  "seller_name", "seller_id_number", "seller_phone", "seller_address",
+  "buyer_name", "buyer_id_number", "buyer_phone", "buyer_address",
+  "intermediary_name", "intermediary_phone", "intermediary_commission",
+  "full_amount_cents", "paid_amount_cents", "full_amount_words", "paid_amount_words",
+  "currency", "notes", "template_html_snapshot", "company_snapshot_json",
+];
+
+/** Money is formatted on the way out; the balance is derived, never stored. */
+const decorateAgreement = (row) => {
+  const full = Number(row.full_amount_cents || 0);
+  const paid = Number(row.paid_amount_cents || 0);
+  const balance = full - paid;
+  return {
+    ...row,
+    kind_label: AGREEMENT_KIND_LABELS[row.kind] || "Agreement",
+    agreement_date_text: formatDateDMY(row.agreement_date),
+    full_amount: formatMoney(full),
+    paid_amount: formatMoney(paid),
+    balance: formatMoney(balance),
+    balance_cents: balance,
+  };
+};
+
+const agreementById = (env, id) =>
+  env.DB.prepare(`SELECT ${AGREEMENT_COLUMNS} FROM agreements WHERE id=? AND deleted_at IS NULL`).bind(id).first();
+
+const agreementScanRowFor = (env, agreementId) =>
+  env.DB.prepare(
+    "SELECT agreement_id,company_id,r2_key,content_type,bytes,width,height,source,created_at " +
+    "FROM agreement_scans WHERE agreement_id=?"
+  ).bind(agreementId).first();
+
+/** Public shape of a signed copy — URLs and measurements, never the R2 key. */
+const agreementScanPayload = (agreementId, scan) => {
+  if (!scan) return null;
+  const base = `/api/agreements/${encodeURIComponent(agreementId)}/scan`;
+  const version = scanVersion(scan);
+  return {
+    url: `${base}?v=${version}`,
+    download_url: `${base}?v=${version}&download=1`,
+    content_type: scan.content_type,
+    bytes: Number(scan.bytes) || 0,
+    width: Number(scan.width) || 0,
+    height: Number(scan.height) || 0,
+    source: scan.source,
+    created_at: scan.created_at,
+  };
+};
+
+/** Agreements live under their own link namespace; /s/<token> stays quotation-only. */
+const agreementSharePath = (token) => `/a/${token}`;
+
+const agreementShareUrlFor = (request, token) =>
+  (token ? new URL(agreementSharePath(token), request.url).toString() : null);
+
+const agreementPayload = async (env, id) => {
+  const row = await agreementById(env, id);
+  if (!row) return null;
+  const [company, scan] = await Promise.all([
+    env.DB.prepare(`SELECT ${COMPANY_COLUMNS} FROM companies WHERE id=?`).bind(row.company_id).first(),
+    agreementScanRowFor(env, id),
+  ]);
+  const snapshot = parseJson(row.company_snapshot_json);
+  const rest = { ...row };
+  /* stripped, not renamed: the token is a credential, `share_path` is the pointer */
+  delete rest.share_token;
+  return {
+    agreement: {
+      ...decorateAgreement(rest),
+      status: row.status === "completed" ? "completed" : "issued",
+      completed_at: row.completed_at || null,
+      signed: Boolean(scan),
+      has_scan: Boolean(scan),
+      scan: agreementScanPayload(id, scan),
+      share_path: row.share_token ? agreementSharePath(row.share_token) : null,
+      share_token_created_at: row.share_token_created_at || null,
+      currency: row.currency || snapshot.currency || company?.currency || "AED",
+      company: company || null,
+    },
+  };
+};
+
+const handleAgreementGet = async (env, id) => {
+  const payload = await agreementPayload(env, id);
+  return payload ? json(payload) : json({ error: "agreement_not_found" }, 404);
+};
+
+/* ------------------------------ ledger ------------------------------ */
+
+const AGREEMENT_LEDGER_ORDER = {
+  number: "a.agreement_number DESC",
+  date: "a.agreement_date DESC, a.created_at DESC",
+};
+
+/**
+ * The desk keeps one ledger per kind, so `kind` is required in practice; `all` exists
+ * for reporting and for the CSV export, where both books belong in one sheet.
+ */
+const handleAgreementList = async (env, url) => {
+  const companyId = url.searchParams.get("company_id");
+  if (!companyId) return json({ error: "company_id_required" }, 400);
+  const rawKind = (url.searchParams.get("kind") || "").trim().toLowerCase();
+  const kind = rawKind === "all" ? "" : (agreementKindOf(rawKind) || "sale");
+  const search = (url.searchParams.get("q") || "").trim().slice(0, 80);
+  const limit = Math.min(Math.max(Number(url.searchParams.get("limit")) || 50, 1), 100);
+  const sort = AGREEMENT_LEDGER_ORDER[url.searchParams.get("sort")] ? url.searchParams.get("sort") : "number";
+  const view = ["active", "deleted"].includes(url.searchParams.get("view")) ? url.searchParams.get("view") : "active";
+  const deletedClause = view === "deleted" ? "a.deleted_at IS NOT NULL" : "a.deleted_at IS NULL";
+  const kindClause = kind ? "AND a.kind=? " : "";
+
+  const rows = await env.DB.prepare(
+    "SELECT a.id,a.kind,a.agreement_number,a.agreement_date,a.vehicle_model,a.vehicle_year," +
+    "a.vehicle_chassis,a.vehicle_plate,a.seller_name,a.buyer_name,a.full_amount_cents," +
+    "a.paid_amount_cents,a.currency,a.status,a.completed_at,a.created_at,a.deleted_at," +
+    "s.created_at AS scan_created_at FROM agreements a " +
+    "LEFT JOIN agreement_scans s ON s.agreement_id=a.id " +
+    `WHERE a.company_id=? ${kindClause}AND ${deletedClause} ` +
+    "AND (a.agreement_number LIKE ? OR a.vehicle_model LIKE ? OR a.vehicle_chassis LIKE ? " +
+    "OR a.vehicle_plate LIKE ? OR a.seller_name LIKE ? OR a.buyer_name LIKE ?) " +
+    `ORDER BY ${AGREEMENT_LEDGER_ORDER[sort]} LIMIT ?`
+  ).bind(companyId, ...(kind ? [kind] : []), ...Array(6).fill(`%${search}%`), limit).all();
+
+  /* the tab badges: counts per kind for the same company and view, search excluded */
+  const countRows = await env.DB.prepare(
+    `SELECT a.kind, COUNT(*) AS n FROM agreements a WHERE a.company_id=? AND ${deletedClause} GROUP BY a.kind`
+  ).bind(companyId).all();
+  const counts = { sale: 0, purchase: 0 };
+  for (const row of countRows.results || []) {
+    if (row.kind in counts) counts[row.kind] = Number(row.n) || 0;
+  }
+  const total = kind ? counts[kind] : counts.sale + counts.purchase;
+
+  return json({
+    agreements: (rows.results || []).map((row) => {
+      const { scan_created_at: scannedAt, ...rest } = row;
+      return {
+        ...decorateAgreement(rest),
+        deleted_at: rest.deleted_at || null,
+        signed: Boolean(scannedAt),
+        has_scan: Boolean(scannedAt),
+      };
+    }),
+    counts,
+    total,
+    kind: kind || "all",
+    sort,
+    view,
+  });
+};
+
+/** Read-only numbering preview for the wizard's first step. */
+const handleAgreementNextNumber = async (env, url) => {
+  const companyId = url.searchParams.get("company_id");
+  const date = url.searchParams.get("date") || todayIso();
+  const kind = agreementKindOf(url.searchParams.get("kind") || "sale");
+  if (!companyId) return json({ error: "company_id_required" }, 400);
+  if (!validIsoDate(date)) return json({ error: "invalid_agreement_date" }, 400);
+  if (!kind) return json({ error: "invalid_agreement_kind", accepted: AGREEMENT_KINDS }, 400);
+  const company = await env.DB.prepare("SELECT id FROM companies WHERE id=?").bind(companyId).first();
+  if (!company) return json({ error: "company_not_found" }, 404);
+  return json({ ...(await peekNextAgreementNumber(env, company.id, kind, date)), date, kind });
+};
+
+/* ------------------------------ create ------------------------------ */
+
+const agreementTextFields = (body) => {
+  const fields = {};
+  for (const [field, max] of Object.entries(AGREEMENT_TEXT_LIMITS)) fields[field] = text(body?.[field], max);
+  return fields;
+};
+
+const agreementNotes = (value) => text(value, MAX_AGREEMENT_NOTES).replace(/\s+/g, " ").trim();
+
+const handleAgreementCreate = async (request, env, ctx, session) => {
+  const body = await bodyJson(request);
+  if (!body) return json({ error: "invalid_body" }, 400);
+  const companyId = text(body.company_id, 48);
+  if (!companyId) return json({ error: "company_id_required" }, 400);
+  const kind = agreementKindOf(body.kind);
+  if (!kind) return json({ error: "invalid_agreement_kind", accepted: AGREEMENT_KINDS }, 400);
+  const fields = agreementTextFields(body);
+  const missing = AGREEMENT_REQUIRED_TEXT.filter((field) => !fields[field]);
+  if (missing.length) return json({ error: "agreement_fields_required", fields: missing }, 400);
+  const date = text(body.agreement_date, 10) || todayIso();
+  if (!validIsoDate(date)) return json({ error: "invalid_agreement_date" }, 400);
+  const fullCents = amountOrZero(body.full_amount);
+  if (fullCents === null) return json({ error: "invalid_full_amount" }, 400);
+  const paidCents = amountOrZero(body.paid_amount);
+  if (paidCents === null) return json({ error: "invalid_paid_amount" }, 400);
+  /* a deposit larger than the price would print a negative balance */
+  if (paidCents > fullCents) return json({ error: "paid_amount_exceeds_full" }, 400);
+  const company = await env.DB.prepare("SELECT * FROM companies WHERE id=? AND active=1").bind(companyId).first();
+  if (!company) return json({ error: "company_not_found" }, 404);
+
+  const period = date.slice(0, 4);
+  /* numbers are always server-allocated, one counter per company, kind and year */
+  let agreementNumber = "";
+  for (let attempt = 0; attempt < 8 && !agreementNumber; attempt++) {
+    const serial = await allocateAgreementSerial(env, company.id, kind, period);
+    const candidate = agreementNumberFor(kind, period, serial);
+    const taken = await env.DB.prepare("SELECT 1 AS taken FROM agreements WHERE company_id=? AND agreement_number=?")
+      .bind(company.id, candidate).first();
+    if (!taken) agreementNumber = candidate;
+  }
+  if (!agreementNumber) return json({ error: "numbering_exhausted" }, 409);
+
+  const template = await env.DB.prepare(
+    "SELECT id,html FROM templates WHERE company_id=? AND kind=? AND active=1 ORDER BY version DESC LIMIT 1"
+  ).bind(company.id, kind).first();
+  const snapshot = {
+    name: company.name, legal_name: company.legal_name, legal_name_ar: company.legal_name_ar,
+    address: company.address,
+    phone: company.phone, email: company.email, currency: company.currency,
+    letterhead_url: company.letterhead_key ? `/api/companies/${company.id}/letterhead` : LETTERHEAD_URL,
+    logo_url: logoUrlFor(company),
+  };
+  const id = crypto.randomUUID();
+  const values = {
+    id,
+    company_id: company.id,
+    kind,
+    template_id: template?.id || null,
+    agreement_number: agreementNumber,
+    agreement_date: date,
+    ...fields,
+    full_amount_cents: fullCents,
+    paid_amount_cents: paidCents,
+    full_amount_words: amountWordsFromCents(fullCents),
+    paid_amount_words: paidCents ? amountWordsFromCents(paidCents) : "",
+    currency: text(body.currency, 8) || company.currency || "AED",
+    notes: agreementNotes(body.notes),
+    template_html_snapshot: template?.html || DEFAULT_AGREEMENT_TEMPLATES[kind],
+    company_snapshot_json: JSON.stringify(snapshot),
+  };
+  await env.DB.prepare(
+    `INSERT INTO agreements(${AGREEMENT_FIELDS.join(",")}) VALUES(${AGREEMENT_FIELDS.map(() => "?").join(",")})`
+  ).bind(...AGREEMENT_FIELDS.map((field) => values[field] ?? null)).run();
+  audit(env, ctx, session.name, "agreement.created", "agreement", id, {
+    agreement_number: agreementNumber, kind, company_id: company.id, full_amount_cents: fullCents,
+  });
+  return json(await agreementPayload(env, id), 201);
+};
+
+/* ------------------------------ edit ------------------------------ */
+
+const handleAgreementPatch = async (request, env, ctx, session, id) => {
+  const body = await bodyJson(request);
+  if (!body) return json({ error: "invalid_body" }, 400);
+  const row = await agreementById(env, id);
+  if (!row) return json({ error: "agreement_not_found" }, 404);
+  /* completed means "filed": the terms on the signed paper cannot drift from the record */
+  if (row.status === "completed") return json({ error: "agreement_completed" }, 409);
+  const sets = [];
+  const values = [];
+  if (typeof body.agreement_date === "string") {
+    if (!validIsoDate(body.agreement_date)) return json({ error: "invalid_agreement_date" }, 400);
+    sets.push("agreement_date=?");
+    values.push(body.agreement_date);
+  }
+  for (const [field, max] of Object.entries(AGREEMENT_TEXT_LIMITS)) {
+    if (typeof body[field] !== "string") continue;
+    const value = text(body[field], max);
+    /* required fields may be corrected but never cleared; the rest may go blank */
+    if (!value && AGREEMENT_REQUIRED_TEXT.includes(field)) {
+      return json({ error: "agreement_fields_required", fields: [field] }, 400);
+    }
+    sets.push(`${field}=?`);
+    values.push(value);
+  }
+  if (typeof body.currency === "string" && text(body.currency, 8)) {
+    sets.push("currency=?");
+    values.push(text(body.currency, 8));
+  }
+  if (typeof body.notes === "string") {
+    sets.push("notes=?");
+    values.push(agreementNotes(body.notes));
+  }
+  /* the two amounts are validated together, so a patch that only raises the deposit still
+     sees the stored price */
+  const fullGiven = body.full_amount !== undefined;
+  const paidGiven = body.paid_amount !== undefined;
+  const fullCents = fullGiven ? amountOrZero(body.full_amount) : Number(row.full_amount_cents || 0);
+  if (fullCents === null) return json({ error: "invalid_full_amount" }, 400);
+  const paidCents = paidGiven ? amountOrZero(body.paid_amount) : Number(row.paid_amount_cents || 0);
+  if (paidCents === null) return json({ error: "invalid_paid_amount" }, 400);
+  if (paidCents > fullCents) return json({ error: "paid_amount_exceeds_full" }, 400);
+  if (fullGiven) {
+    sets.push("full_amount_cents=?", "full_amount_words=?");
+    values.push(fullCents, amountWordsFromCents(fullCents));
+  }
+  if (paidGiven) {
+    sets.push("paid_amount_cents=?", "paid_amount_words=?");
+    values.push(paidCents, paidCents ? amountWordsFromCents(paidCents) : "");
+  }
+  if (!sets.length) return json({ error: "no_fields_to_update" }, 400);
+  await env.DB.prepare(`UPDATE agreements SET ${sets.join(", ")}, updated_at=CURRENT_TIMESTAMP WHERE id=?`)
+    .bind(...values, id).run();
+  audit(env, ctx, session.name, "agreement.updated", "agreement", id, {
+    agreement_number: row.agreement_number,
+    kind: row.kind,
+    company_id: row.company_id,
+    fields: sets.map((entry) => entry.replace("=?", "")),
+  });
+  return handleAgreementGet(env, id);
+};
+
+/* ---------------------------- cancel / restore ---------------------------- */
+
+const handleAgreementCancel = async (env, ctx, session, id) => {
+  const row = await agreementById(env, id);
+  if (!row) return json({ error: "agreement_not_found" }, 404);
+  /* a completed record is filed paperwork: reopening it is the way to change it */
+  if (row.status === "completed") return json({ error: "agreement_completed" }, 409);
+  const result = await env.DB.prepare(
+    "UPDATE agreements SET deleted_at=CURRENT_TIMESTAMP WHERE id=? AND deleted_at IS NULL"
+  ).bind(id).run();
+  if (!result.meta || result.meta.changes === 0) return json({ error: "agreement_not_found" }, 404);
+  audit(env, ctx, session.name, "agreement.cancelled", "agreement", id, {
+    agreement_number: row.agreement_number, kind: row.kind, company_id: row.company_id,
+  });
+  return json({ cancelled: true });
+};
+
+const handleAgreementRestore = async (env, ctx, session, id) => {
+  const row = await env.DB.prepare(
+    "SELECT id,company_id,kind,agreement_number,deleted_at FROM agreements WHERE id=?"
+  ).bind(id).first();
+  if (!row) return json({ error: "agreement_not_found" }, 404);
+  if (!row.deleted_at) return json({ error: "agreement_not_deleted" }, 409);
+  const result = await env.DB.prepare(
+    "UPDATE agreements SET deleted_at=NULL,updated_at=CURRENT_TIMESTAMP WHERE id=? AND deleted_at IS NOT NULL"
+  ).bind(id).run();
+  if (!result.meta || result.meta.changes === 0) return json({ error: "agreement_not_deleted" }, 409);
+  audit(env, ctx, session.name, "agreement.restored", "agreement", id, {
+    agreement_number: row.agreement_number, kind: row.kind, company_id: row.company_id,
+  });
+  return json({ restored: true, id, agreement_number: row.agreement_number });
+};
+
+/** Permanent delete only after a soft delete, and only with the number typed back. */
+const handleAgreementPermanentDelete = async (request, env, ctx, session, id) => {
+  const body = await bodyJson(request);
+  if (!body) return json({ error: "invalid_body" }, 400);
+  const row = await env.DB.prepare(
+    "SELECT id,company_id,kind,agreement_number,deleted_at FROM agreements WHERE id=?"
+  ).bind(id).first();
+  if (!row) return json({ error: "agreement_not_found" }, 404);
+  if (!row.deleted_at) return json({ error: "agreement_must_be_deleted_first" }, 409);
+  if (text(body.confirm_number, 60) !== row.agreement_number) {
+    return json({ error: "agreement_confirmation_required" }, 409);
+  }
+  const scan = await env.DB.prepare("SELECT r2_key FROM agreement_scans WHERE agreement_id=?").bind(id).first();
+  if (scan?.r2_key && !env.ASSETS) return json({ error: "storage_unavailable" }, 503);
+
+  const details = {
+    agreement_number: row.agreement_number,
+    kind: row.kind,
+    company_id: row.company_id,
+    signed_scan_deleted: Boolean(scan?.r2_key),
+    permanent: true,
+  };
+  const results = await env.DB.batch([
+    env.DB.prepare(
+      "INSERT INTO audit_events(id,actor,action,entity,entity_id,details_json) " +
+      "SELECT ?,?,?,?,?,? WHERE EXISTS (SELECT 1 FROM agreements WHERE id=? AND deleted_at IS NOT NULL)"
+    ).bind(crypto.randomUUID(), String(session.name || "shared"), "agreement.permanently_deleted",
+      "agreement", id, JSON.stringify(details), id),
+    env.DB.prepare(
+      "DELETE FROM agreement_scans WHERE agreement_id=? " +
+      "AND EXISTS (SELECT 1 FROM agreements WHERE id=? AND deleted_at IS NOT NULL)"
+    ).bind(id, id),
+    env.DB.prepare("DELETE FROM agreements WHERE id=? AND deleted_at IS NOT NULL").bind(id),
+  ]);
+  if (!results[2]?.meta || results[2].meta.changes === 0) {
+    return json({ error: "agreement_must_be_deleted_first" }, 409);
+  }
+  let assetCleanupFailed = false;
+  if (scan?.r2_key && env.ASSETS) {
+    try {
+      await env.ASSETS.delete(scan.r2_key);
+    } catch {
+      /* the row is gone either way; the object is reported so an operator can sweep it */
+      assetCleanupFailed = true;
+    }
+  }
+  return json({ deleted: true, id, asset_cleanup_failed: assetCleanupFailed });
+};
+
+
+const COMPANY_JOIN_COLUMNS =
+  "c.name AS company_name, c.legal_name AS company_legal_name, " +
+  "c.legal_name_ar AS company_legal_name_ar, c.logo_key AS company_logo_key";
+
+const agreementKindLabel = (kind) => AGREEMENT_KIND_LABELS[kind] || "Agreement";
+
+/**
+ * The agreement sheet's own tokens, on top of the shared company block. Percentages
+ * and dates are pre-formatted: a template must never do arithmetic or date maths.
+ */
+const buildAgreementPrintFields = (row) => {
+  const full = Number(row.full_amount_cents || 0);
+  const paid = Number(row.paid_amount_cents || 0);
+  const balance = full - paid;
+  const intermediaryName = row.intermediary_name || "";
+  const intermediaryPhone = row.intermediary_phone || "";
+  return {
+    agreement_number: row.agreement_number,
+    agreement_date: formatDateDMY(row.agreement_date),
+    agreement_kind: row.kind,
+    agreement_kind_label: agreementKindLabel(row.kind),
+    vehicle_model: row.vehicle_model || "",
+    vehicle_year: row.vehicle_year || "",
+    vehicle_chassis: row.vehicle_chassis || "",
+    vehicle_plate: row.vehicle_plate || "",
+    vehicle_color: row.vehicle_color || "",
+    vehicle_odometer: row.vehicle_odometer || "",
+    vehicle_registration_place: row.vehicle_registration_place || "",
+    seller_name: row.seller_name || "",
+    seller_id_number: row.seller_id_number || "",
+    seller_phone: row.seller_phone || "",
+    seller_address: row.seller_address || "",
+    buyer_name: row.buyer_name || "",
+    buyer_id_number: row.buyer_id_number || "",
+    buyer_phone: row.buyer_phone || "",
+    buyer_address: row.buyer_address || "",
+    /* present-but-empty: the template decides whether an empty row still prints */
+    intermediary_name: intermediaryName,
+    intermediary_phone: intermediaryPhone,
+    intermediary_commission: row.intermediary_commission || "",
+    intermediary_state: intermediaryName || intermediaryPhone ? "has-intermediary" : "no-intermediary",
+    full_amount: formatMoney(full),
+    full_amount_words: row.full_amount_words || "",
+    paid_amount: formatMoney(paid),
+    paid_amount_words: row.paid_amount_words || "",
+    balance: formatMoney(balance),
+    balance_words: amountWordsFromCents(balance),
+    notes: row.notes || "",
+    notes_state: row.notes ? "has-notes" : "no-notes",
+    ...companyPrintFields(row),
+  };
+};
+
+const agreementSheetRow = (env, id) =>
+  env.DB.prepare(
+    `SELECT a.*, ${COMPANY_JOIN_COLUMNS} FROM agreements a JOIN companies c ON c.id=a.company_id ` +
+    "WHERE a.id=? AND a.deleted_at IS NULL"
+  ).bind(id).first();
+
+/** The agreement print sheet: the version snapshotted at issue time, autoprinted on request. */
+const handleAgreementPrint = async (env, url, id) => {
+  const row = await agreementSheetRow(env, id);
+  if (!row) return json({ error: "agreement_not_found" }, 404);
+  const autoprint = ["1", "true", "yes"].includes((url.searchParams.get("print") || "").toLowerCase());
+  const template = row.template_html_snapshot || DEFAULT_AGREEMENT_TEMPLATES[row.kind] || DEFAULT_SALES_AGREEMENT;
+  return sheetResponse(renderQuote(template, buildAgreementPrintFields(row)), autoprint);
+};
+
+/* ---------------------------- signed copy ---------------------------- */
+
+const handleAgreementScanGet = async (env, id, url) => {
+  const row = await agreementById(env, id);
+  if (!row) return json({ error: "agreement_not_found" }, 404);
+  const scan = await agreementScanRowFor(env, id);
+  if (!scan) return json({ error: "scan_not_found" }, 404);
+  if (!env.ASSETS) return json({ error: "storage_unavailable" }, 503);
+  const object = await env.ASSETS.get(scan.r2_key);
+  if (!object) return json({ error: "scan_not_found" }, 404);
+  return imageResponse(object, scan, url, `${row.agreement_number || "agreement"}-signed`);
+};
+
+/**
+ * Stores the signed page. The signature is verified exactly like a quotation scan, so a
+ * file renamed to ".pdf" can never be stored — or served — under the wrong type.
+ */
+const handleAgreementScanUpload = async (request, env, ctx, session, id) => {
+  const row = await agreementById(env, id);
+  if (!row) return json({ error: "agreement_not_found" }, 404);
+  if (!env.ASSETS) return json({ error: "storage_unavailable" }, 503);
+  let form;
+  try {
+    form = await request.formData();
+  } catch {
+    return json({ error: "invalid_body" }, 400);
+  }
+  const file = form.get("file");
+  if (!file || typeof file === "string" || typeof file.arrayBuffer !== "function") {
+    return json({ error: "scan_file_required" }, 400);
+  }
+  if (file.size > MAX_PDF_BYTES) return json({ error: "scan_too_large", max_bytes: MAX_PDF_BYTES }, 413);
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  const type = sniffScanType(bytes, file.type || "");
+  if (!type) return json({ error: "unsupported_scan_type", accepted: SCAN_TYPES.map((t) => t.mime) }, 415);
+  /* the PDF ceiling is the outer limit; a picture still has to fit the smaller one */
+  const ceiling = type.mime === PDF_TYPE.mime ? MAX_PDF_BYTES : MAX_SCAN_BYTES;
+  if (bytes.length > ceiling) return json({ error: "scan_too_large", max_bytes: ceiling }, 413);
+
+  const width = Math.min(Math.max(Number(form.get("width")) || 0, 0), 20000);
+  const height = Math.min(Math.max(Number(form.get("height")) || 0, 0), 20000);
+  const source = text(form.get("source"), 20) || "scan";
+  const previous = await agreementScanRowFor(env, id);
+  const key = `${AGREEMENT_SCAN_PREFIX}${row.company_id}/${id}-${randomToken(6)}.${type.ext}`;
+
+  await env.ASSETS.put(key, bytes, {
+    httpMetadata: { contentType: type.mime },
+    customMetadata: { agreement_id: id, company_id: row.company_id },
+  });
+  await env.DB.prepare(
+    "INSERT INTO agreement_scans(agreement_id,company_id,r2_key,content_type,bytes,width,height,source) " +
+    "VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(agreement_id) DO UPDATE SET " +
+    "company_id=excluded.company_id,r2_key=excluded.r2_key,content_type=excluded.content_type," +
+    "bytes=excluded.bytes,width=excluded.width,height=excluded.height,source=excluded.source," +
+    "created_at=CURRENT_TIMESTAMP"
+  ).bind(id, row.company_id, key, type.mime, bytes.length, width, height, source).run();
+  /* the token is minted with the first signed copy: a link to a record that has nothing
+     to show is not worth sending, and rotating one stays an explicit act */
+  if (!row.share_token) {
+    await env.DB.prepare(
+      "UPDATE agreements SET share_token=?, share_token_created_at=CURRENT_TIMESTAMP, updated_at=CURRENT_TIMESTAMP WHERE id=?"
+    ).bind(randomToken(SHARE_TOKEN_BYTES), id).run();
+  }
+  if (previous?.r2_key && previous.r2_key !== key) {
+    try { await env.ASSETS.delete(previous.r2_key); } catch { /* the new copy is already live */ }
+  }
+  audit(env, ctx, session.name, "agreement.scan_uploaded", "agreement", id, {
+    agreement_number: row.agreement_number,
+    kind: row.kind,
+    company_id: row.company_id,
+    content_type: type.mime, bytes: bytes.length, replaced: Boolean(previous), source,
+  });
+  return json(await agreementPayload(env, id), previous ? 200 : 201);
+};
+
+const handleAgreementScanDelete = async (env, ctx, session, id) => {
+  const row = await agreementById(env, id);
+  if (!row) return json({ error: "agreement_not_found" }, 404);
+  const scan = await agreementScanRowFor(env, id);
+  if (!scan) return json({ removed: false });
+  await env.DB.prepare("DELETE FROM agreement_scans WHERE agreement_id=?").bind(id).run();
+  if (env.ASSETS) {
+    try { await env.ASSETS.delete(scan.r2_key); } catch { /* the row is already clear */ }
+  }
+  audit(env, ctx, session.name, "agreement.scan_removed", "agreement", id, {
+    agreement_number: row.agreement_number, kind: row.kind, company_id: row.company_id,
+  });
+  return json({ removed: true });
+};
+
+/* ---------------------------- workflow ---------------------------- */
+
+/** Open or close an agreement — closing it is what "the deal is done" means for the desk. */
+const handleAgreementStatus = async (request, env, ctx, session, id) => {
+  const body = await bodyJson(request);
+  if (!body) return json({ error: "invalid_body" }, 400);
+  if (!AGREEMENT_STATUSES.includes(body.status)) {
+    return json({ error: "invalid_status", accepted: AGREEMENT_STATUSES }, 400);
+  }
+  const row = await agreementById(env, id);
+  if (!row) return json({ error: "agreement_not_found" }, 404);
+  if (body.status === "completed") {
+    /* completed claims the paperwork is filed, so there must be paperwork */
+    const scan = await agreementScanRowFor(env, id);
+    if (!scan) return json({ error: "scan_required" }, 409);
+  }
+  await env.DB.prepare(
+    "UPDATE agreements SET status=?, completed_at=?, updated_at=CURRENT_TIMESTAMP WHERE id=?"
+  ).bind(body.status, body.status === "completed" ? new Date().toISOString() : null, id).run();
+  audit(env, ctx, session.name,
+    body.status === "completed" ? "agreement.completed" : "agreement.reopened", "agreement", id, {
+      agreement_number: row.agreement_number, kind: row.kind,
+      company_id: row.company_id, status: body.status,
+    });
+  return handleAgreementGet(env, id);
+};
+
+/** Mints (or rotates) the public link. Rotating invalidates every previously pasted URL. */
+const handleAgreementShareLinkCreate = async (request, env, ctx, session, id) => {
+  const row = await agreementById(env, id);
+  if (!row) return json({ error: "agreement_not_found" }, 404);
+  const token = randomToken(SHARE_TOKEN_BYTES);
+  await env.DB.prepare(
+    "UPDATE agreements SET share_token=?, share_token_created_at=CURRENT_TIMESTAMP, updated_at=CURRENT_TIMESTAMP WHERE id=?"
+  ).bind(token, id).run();
+  audit(env, ctx, session.name,
+    row.share_token ? "agreement.share_link_rotated" : "agreement.share_link_created", "agreement", id, {
+      agreement_number: row.agreement_number, kind: row.kind, company_id: row.company_id,
+    });
+  return json({
+    share_path: agreementSharePath(token),
+    share_url: agreementShareUrlFor(request, token),
+    share_token_created_at: new Date().toISOString(),
+  }, row.share_token ? 200 : 201);
+};
+
+const handleAgreementShareLinkRevoke = async (env, ctx, session, id) => {
+  const row = await agreementById(env, id);
+  if (!row) return json({ error: "agreement_not_found" }, 404);
+  await env.DB.prepare(
+    "UPDATE agreements SET share_token=NULL, share_token_created_at=NULL, updated_at=CURRENT_TIMESTAMP WHERE id=?"
+  ).bind(id).run();
+  audit(env, ctx, session.name, "agreement.share_link_revoked", "agreement", id, {
+    agreement_number: row.agreement_number, kind: row.kind, company_id: row.company_id,
+  });
+  return json({ share_path: null, share_url: null, share_token_created_at: null });
+};
+
+
+/**
+ * The agreement ledger as a spreadsheet: one row per record, both amounts and the
+ * derived balance, so finance never has to recompute the arithmetic.
+ */
+const handleAgreementCsvExport = async (env, url) => {
+  const companyId = url.searchParams.get("company_id");
+  if (!companyId) return json({ error: "company_id_required" }, 400);
+  const rawKind = (url.searchParams.get("kind") || "").trim().toLowerCase();
+  const kind = rawKind === "all" ? "" : agreementKindOf(rawKind);
+  const company = await env.DB.prepare("SELECT name,currency FROM companies WHERE id=?").bind(companyId).first();
+  if (!company) return json({ error: "company_not_found" }, 404);
+  const rows = await env.DB.prepare(
+    "SELECT kind,agreement_number,agreement_date,vehicle_model,vehicle_year,vehicle_chassis," +
+    "vehicle_plate,vehicle_color,seller_name,seller_id_number,seller_phone,buyer_name,buyer_id_number," +
+    "buyer_phone,intermediary_name,intermediary_commission,full_amount_cents,paid_amount_cents," +
+    "currency,status,notes,created_at FROM agreements WHERE company_id=? " +
+    `${kind ? "AND kind=? " : ""}AND deleted_at IS NULL ORDER BY agreement_number DESC`
+  ).bind(companyId, ...(kind ? [kind] : [])).all();
+
+  const lines = [
+    "kind,agreement,date,model,year,chassis,plate,color,seller,seller_id,seller_phone," +
+    "buyer,buyer_id,buyer_phone,intermediary,commission,full_amount,paid_amount,balance," +
+    "currency,status,notes,created",
+  ];
+  for (const row of rows.results || []) {
+    const full = Number(row.full_amount_cents || 0);
+    const paid = Number(row.paid_amount_cents || 0);
+    lines.push([
+      row.kind, row.agreement_number, row.agreement_date, row.vehicle_model, row.vehicle_year,
+      row.vehicle_chassis, row.vehicle_plate, row.vehicle_color, row.seller_name, row.seller_id_number,
+      row.seller_phone, row.buyer_name, row.buyer_id_number, row.buyer_phone, row.intermediary_name,
+      row.intermediary_commission, (full / 100).toFixed(2), (paid / 100).toFixed(2),
+      ((full - paid) / 100).toFixed(2), row.currency || company.currency, row.status, row.notes,
+      row.created_at,
+    ].map(csvCell).join(","));
+  }
+  const name = kind ? `${kind}-agreements` : "agreements";
+  return new Response(lines.join("\r\n"), {
+    headers: {
+      "content-type": "text/csv; charset=utf-8",
+      "content-disposition": `attachment; filename="${name}-${todayIso()}.csv"`,
+      "cache-control": "no-store",
+    },
+  });
+};
+
 
 /* ============================== print ============================== */
+
+/**
+ * One sheet response for every HTML document the Worker renders (quotation and
+ * agreement prints), so the autoprint hash and the CSP can never drift apart.
+ */
+const sheetResponse = async (html, autoprint) => {
+  let body = html;
+  if (autoprint) {
+    const tag = `<script>${AUTOPRINT_SCRIPT}</script>`;
+    body = html.includes("</body>") ? html.replace("</body>", tag + "</body>") : html + tag;
+  }
+  const scriptSrc = autoprint ? `'sha256-${await scriptHash()}'` : "'none'";
+  const csp = [
+    "default-src 'none'",
+    "img-src 'self' data:",
+    "style-src 'unsafe-inline'",
+    "font-src 'self' data:",
+    `script-src ${scriptSrc}`,
+    "base-uri 'none'",
+    "form-action 'none'",
+    "frame-ancestors 'self'",
+  ].join("; ");
+  return new Response(body, {
+    headers: {
+      "content-type": "text/html; charset=utf-8",
+      "cache-control": "no-store",
+      "content-security-policy": csp,
+      "x-content-type-options": "nosniff",
+    },
+  });
+};
 
 /**
  * Splits a legal name into its brand word and the remainder, so a template can keep the first
@@ -1556,7 +2374,11 @@ const splitBrandWord = (value) => {
   return { head, tail: parts.join(" ") };
 };
 
-const buildPrintFields = (row) => {
+/**
+ * Company-derived print fields. Quotation sheets and agreement sheets both print the
+ * same lockup, logo rules and letterhead, so the mapping lives in one place.
+ */
+const companyPrintFields = (row) => {
   const snapshot = parseJson(row.company_snapshot_json);
   /* Branding follows the live company profile, exactly like the letterhead: a logo that
      is replaced or removed must never leave a broken image on a reprint. The snapshot
@@ -1572,16 +2394,7 @@ const buildPrintFields = (row) => {
   const brandEn = splitBrandWord(legalEn);
   const brandAr = splitBrandWord(legalAr);
   return {
-    quote_number: row.quote_number,
-    quote_date: formatDateDMY(row.quote_date),
-    model: row.model,
-    year: row.year,
-    chassis: row.chassis,
-    /* the free-form note from the quotation itself; the Challenger sheet prints it in its fourth row */
-    comments: commentsField(row.comments || ""),
     currency: snapshot.currency || "AED",
-    amount: formatMoney(row.amount_cents),
-    amount_words: row.amount_words,
     company_name: snapshot.legal_name || snapshot.name || row.company_name || "",
     /* the two legal names, English then Arabic, plus their accent-ready halves */
     company_legal_name_en: legalEn,
@@ -1601,6 +2414,19 @@ const buildPrintFields = (row) => {
   };
 };
 
+const buildPrintFields = (row) => ({
+  quote_number: row.quote_number,
+  quote_date: formatDateDMY(row.quote_date),
+  model: row.model,
+  year: row.year,
+  chassis: row.chassis,
+  /* the free-form note from the quotation itself; the Challenger sheet prints it in its fourth row */
+  comments: commentsField(row.comments || ""),
+  amount: formatMoney(row.amount_cents),
+  amount_words: row.amount_words,
+  ...companyPrintFields(row),
+});
+
 const handlePrint = async (env, url, id) => {
   const row = await env.DB.prepare(
     "SELECT q.*, c.name AS company_name, c.legal_name AS company_legal_name, " +
@@ -1610,30 +2436,7 @@ const handlePrint = async (env, url, id) => {
   ).bind(id).first();
   if (!row) return json({ error: "quotation_not_found" }, 404);
   const autoprint = ["1", "true", "yes"].includes((url.searchParams.get("print") || "").toLowerCase());
-  let html = renderQuote(row.template_html_snapshot || DEFAULT_TEMPLATE, buildPrintFields(row));
-  if (autoprint) {
-    const tag = `<script>${AUTOPRINT_SCRIPT}</script>`;
-    html = html.includes("</body>") ? html.replace("</body>", tag + "</body>") : html + tag;
-  }
-  const scriptSrc = autoprint ? `'sha256-${await scriptHash()}'` : "'none'";
-  const csp = [
-    "default-src 'none'",
-    "img-src 'self' data:",
-    "style-src 'unsafe-inline'",
-    "font-src 'self' data:",
-    `script-src ${scriptSrc}`,
-    "base-uri 'none'",
-    "form-action 'none'",
-    "frame-ancestors 'self'",
-  ].join("; ");
-  return new Response(html, {
-    headers: {
-      "content-type": "text/html; charset=utf-8",
-      "cache-control": "no-store",
-      "content-security-policy": csp,
-      "x-content-type-options": "nosniff",
-    },
-  });
+  return sheetResponse(renderQuote(row.template_html_snapshot || DEFAULT_TEMPLATE, buildPrintFields(row)), autoprint);
 };
 
 /* ============================ public share ============================ */
@@ -1728,6 +2531,81 @@ const handleShareScan = async (env, url, token) => {
   return imageResponse(object, scan, url, `${row.quote_number}-signed`);
 };
 
+/* ---------------------- public agreement share ---------------------- */
+
+/**
+ * The same rule as a quotation link: the token is matched exactly and only ever
+ * resolves a live agreement, so revoking it, cancelling the record or mistyping it
+ * all end on the same 404 page. Agreements keep their own namespace (/a/<token>) so
+ * a token can never be replayed against the quotation route.
+ */
+const agreementShareRowFor = (env, token) =>
+  env.DB.prepare(
+    `SELECT a.*, ${COMPANY_JOIN_COLUMNS} FROM agreements a JOIN companies c ON c.id=a.company_id ` +
+    "WHERE a.share_token=? AND a.deleted_at IS NULL"
+  ).bind(token).first();
+
+const handleAgreementSharePage = async (request, env, token) => {
+  const row = SHARE_TOKEN_PATTERN.test(token) ? await agreementShareRowFor(env, token) : null;
+  if (!row) return htmlResponse(renderAgreementShareMissing(), 404);
+  const scan = await agreementScanRowFor(env, row.id);
+  const snapshot = parseJson(row.company_snapshot_json);
+  const origin = new URL(request.url).origin;
+  const base = origin + agreementSharePath(token);
+  const full = Number(row.full_amount_cents || 0);
+  const paid = Number(row.paid_amount_cents || 0);
+  return htmlResponse(renderAgreementSharePage({
+    agreement: {
+      agreement_number: row.agreement_number,
+      kind_label: agreementKindLabel(row.kind),
+      agreement_date_text: formatDateDMY(row.agreement_date),
+      status: row.status === "completed" ? "completed" : "issued",
+      vehicle_model: row.vehicle_model || "",
+      vehicle_year: row.vehicle_year || "",
+      vehicle_chassis: row.vehicle_chassis || "",
+      vehicle_plate: row.vehicle_plate || "",
+      vehicle_color: row.vehicle_color || "",
+      seller_name: row.seller_name || "",
+      buyer_name: row.buyer_name || "",
+      full_amount: formatMoney(full),
+      paid_amount: formatMoney(paid),
+      balance: formatMoney(full - paid),
+      currency: row.currency || snapshot.currency || "AED",
+      full_amount_words: row.full_amount_words || amountWordsFromCents(full),
+      balance_words: amountWordsFromCents(full - paid),
+      notes: row.notes || "",
+    },
+    company: {
+      name: row.company_name || "",
+      legal_name: snapshot.legal_name || row.company_legal_name || row.company_name || "",
+      legal_name_ar: snapshot.legal_name_ar || row.company_legal_name_ar || "",
+      phone: snapshot.phone || "",
+      email: snapshot.email || "",
+    },
+    scan: scan
+      ? {
+        bytes: Number(scan.bytes) || 0,
+        width: Number(scan.width) || 0,
+        height: Number(scan.height) || 0,
+        content_type: scan.content_type || "image/jpeg",
+      }
+      : null,
+    links: { image: `${base}/scan`, download: `${base}/scan?download=1` },
+  }));
+};
+
+/** The signed agreement behind a token. Public by design; unguessable by construction. */
+const handleAgreementShareScan = async (env, url, token) => {
+  const row = SHARE_TOKEN_PATTERN.test(token) ? await agreementShareRowFor(env, token) : null;
+  if (!row) return json({ error: "not_found" }, 404);
+  const scan = await agreementScanRowFor(env, row.id);
+  if (!scan) return json({ error: "scan_not_found" }, 404);
+  if (!env.ASSETS) return json({ error: "storage_unavailable" }, 503);
+  const object = await env.ASSETS.get(scan.r2_key);
+  if (!object) return json({ error: "scan_not_found" }, 404);
+  return imageResponse(object, scan, url, `${row.agreement_number}-signed`);
+};
+
 
 /* ============================== export ============================== */
 
@@ -1760,7 +2638,10 @@ const handleCsvExport = async (env, url) => {
 
 /* ============================== router ============================== */
 
-const KNOWN_RESOURCES = new Set(["companies", "templates", "quotations", "export", "auth", "settings", "audit"]);
+const KNOWN_RESOURCES = new Set([
+  "companies", "templates", "quotations", "agreements", "export", "auth", "settings", "audit",
+]);
+
 
 const handleHealth = async (env) => {
   try {
@@ -1859,6 +2740,34 @@ async function route(request, env, ctx, url) {
     }
   }
 
+  if (resource === "agreements") {
+    if (!id && method === "GET") return handleAgreementList(env, url);
+    if (!id && method === "POST") return handleAgreementCreate(request, env, ctx, session);
+    if (id === "next-number" && !action && method === "GET") return handleAgreementNextNumber(env, url);
+    if (id && action === "restore" && !child && method === "POST") {
+      return handleAgreementRestore(env, ctx, session, id);
+    }
+    if (id && action === "permanent" && !child && method === "DELETE") {
+      return handleAgreementPermanentDelete(request, env, ctx, session, id);
+    }
+    if (id && !action && method === "GET") return handleAgreementGet(env, id);
+    if (id && !action && method === "PATCH") return handleAgreementPatch(request, env, ctx, session, id);
+    if (id && !action && method === "DELETE") return handleAgreementCancel(env, ctx, session, id);
+    if (id && action === "print" && !child && method === "GET") return handleAgreementPrint(env, url, id);
+    if (id && action === "scan" && !child) {
+      if (method === "GET") return handleAgreementScanGet(env, id, url);
+      if (method === "POST") return handleAgreementScanUpload(request, env, ctx, session, id);
+      if (method === "DELETE") return handleAgreementScanDelete(env, ctx, session, id);
+    }
+    if (id && action === "status" && !child && method === "PATCH") {
+      return handleAgreementStatus(request, env, ctx, session, id);
+    }
+    if (id && action === "share-link" && !child) {
+      if (method === "POST") return handleAgreementShareLinkCreate(request, env, ctx, session, id);
+      if (method === "DELETE") return handleAgreementShareLinkRevoke(env, ctx, session, id);
+    }
+  }
+
   if (resource === "settings" && !id) {
     if (method === "GET") return handleSettingsGet(env);
     if (method === "PATCH") return handleSettingsPatch(request, env, ctx, session);
@@ -1866,6 +2775,7 @@ async function route(request, env, ctx, url) {
 
 
   if (resource === "export" && id === "quotations.csv" && method === "GET") return handleCsvExport(env, url);
+  if (resource === "export" && id === "agreements.csv" && method === "GET") return handleAgreementCsvExport(env, url);
 
   return json({ error: "not_found", path }, 404);
 }
@@ -1900,6 +2810,28 @@ export default {
       }
     }
 
+    /* Agreement links are their own namespace: /a/<token> and /a/<token>/scan. */
+    if (url.pathname === "/a" || url.pathname.startsWith("/a/")) {
+      if (request.method !== "GET" && request.method !== "HEAD") {
+        return json({ error: "method_not_allowed" }, 405);
+      }
+      const [token, action, ...rest] = url.pathname.slice("/a/".length).split("/").filter(Boolean);
+      if (rest.length) return json({ error: "not_found" }, 404);
+      try {
+        if (action === "scan") return await handleAgreementShareScan(env, url, token || "");
+        if (action) return json({ error: "not_found" }, 404);
+        return await handleAgreementSharePage(request, env, token || "");
+      } catch (error) {
+        console.error(JSON.stringify({
+          event: "agreement_share_page_failed",
+          token_length: String(token || "").length,
+          message: error?.message || String(error),
+        }));
+        return htmlResponse(renderAgreementShareMissing(), 500);
+      }
+    }
+
+
     if (!url.pathname.startsWith("/api/")) return json({ error: "not_found" }, 404);
     if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: { allow: "GET, POST, PATCH, DELETE, OPTIONS" } });
     try {
@@ -1917,6 +2849,4 @@ export default {
     }
   },
 };
-
-
 
