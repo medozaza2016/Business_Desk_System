@@ -298,7 +298,6 @@ function paintCompanyChrome() {
   const company = activeCompany();
   $("currencyTag").textContent = company?.currency || "AED";
   const csv = company ? `/api/export/quotations.csv?company_id=${encodeURIComponent(company.id)}` : "#";
-  $("csvLink").href = csv;
   $("csvLink2").href = csv;
 }
 
@@ -398,7 +397,6 @@ function renderQuotes() {
     ? "<b>No deleted quotations</b> Deleted records for this company will appear here."
     : "<b>No quotations yet</b> Start one with New quotation: the sheet is numbered and frozen when it is saved.";
   $("quoteActionsHead").hidden = !isDeleted;
-  $("csvLink").hidden = isDeleted;
   for (const button of $("quoteView").querySelectorAll("button")) {
     button.setAttribute("aria-pressed", button.dataset.view === state.quoteView ? "true" : "false");
   }
@@ -633,11 +631,6 @@ function renderAgreements() {
     button.setAttribute("aria-pressed", button.dataset.sort === state.agreementSort ? "true" : "false");
   }
 
-  $("agreementCsv").href = company
-    ? `/api/export/agreements.csv?company_id=${encodeURIComponent(company.id)}&kind=${state.agreementKind}`
-    : "#";
-  $("agreementCsv").hidden = isDeleted || !company;
-  $("agreementSheetBtn").hidden = isDeleted || !company;
   $("newAgreementBtn").disabled = !company;
 
   for (const agreement of state.agreements) {
@@ -2183,10 +2176,6 @@ function bind() {
     state.agreementSearch = "";
     $("agreementSearch").value = "";
     loadAgreements();
-  });
-  /* jumps straight to the sheet the open book prints with */
-  $("agreementSheetBtn").addEventListener("click", () => {
-    void openSettings("template", state.agreementKind);
   });
   $("agreementView").addEventListener("click", (event) => {
     const button = event.target.closest("button[data-view]");

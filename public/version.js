@@ -2,7 +2,7 @@
    `/version.json` is the single source; the bundled fallback covers an offline
    desk or a cached shell, so the label never reads "undefined". */
 
-export const APP_VERSION_FALLBACK = "1.3.0";
+export const APP_VERSION_FALLBACK = "1.3.1";
 
 /** Paint `Version x.y.z` into every `.app-version-label` on the page. */
 export async function loadAppVersion() {

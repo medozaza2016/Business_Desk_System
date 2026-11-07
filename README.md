@@ -56,8 +56,10 @@ Live: <https://desk.luxoritpro.com>
   previews the sheet before it is issued. The record page (`/agreement?id=…`) edits the details, files the
   signed page through the same scanner, prints the A4 sheet, hands the paperwork to WhatsApp as a file or
   as a private `/a/<token>` link, and shows that record's audit trail. Both books share the ledger
-  machinery: search, cancelled view, restore, permanent delete with the number typed back, CSV export,
-  and the same *issued → completed* workflow.
+  machinery: search, cancelled view, restore, permanent delete with the number typed back, and the same
+  *issued → completed* workflow. Neither ledger carries export or print buttons; both books still write a
+  CSV at `/api/export/quotations.csv` (also linked from the company pane in *Settings*) and
+  `/api/export/agreements.csv`.
 
 ## Quick start
 
