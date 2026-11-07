@@ -175,7 +175,6 @@ function paintSigned(quote) {
     image.removeAttribute("src");
     image.hidden = true;
   }
-  $("signedEmpty").hidden = Boolean(scan);
 
   /* a PDF has no picture to show, so the frame becomes the file it is */
   const doc = $("signedDoc");

@@ -38,7 +38,8 @@ Live: <https://desk.luxoritpro.com>
   scanner divides out the lamp's colour, so an indoor photo is not left yellow, and the operator can pick
   **Colour** or **Grey & white**. A photo already on the phone or a scanner's **PDF** can be uploaded
   instead (≤ 12 MB), through the same card. No SDK, no build step — the geometry runs in the browser
-  (`public/scan.js`).
+  (`public/scan.js`). Until a page is filed the card stays a single strip with just those three buttons;
+  the proof, the measurements and the send step unfold the moment a picture or a PDF exists.
 - **WhatsApp hand-off** from the record page: attach the signed file through the OS share sheet, or send
   a private `/s/<token>` link with the figures and the same page. The desk default lives in *Settings*
   and the operator can switch it for a single send. On a desktop the picture downloads and the caption is

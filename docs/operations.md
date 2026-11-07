@@ -56,7 +56,7 @@ pending with `npx wrangler d1 migrations list challenger-quotation-db --remote`,
 database that already holds paper, export it first
 (`npx wrangler d1 export challenger-quotation-db --remote --output backup.sql`).
 
-Every page states the build it is running at its foot (`Version 1.3.1`). The label comes from
+Every page states the build it is running at its foot (`Version 1.3.2`). The label comes from
 `public/version.json` through `public/version.js`, so a release bumps that JSON (and the matching
 fallback constant in `version.js`) and the desk, the quotation record and the agreement record are
 relabelled together.
@@ -146,6 +146,9 @@ A4 sheet. Replace it with the real artwork (A4 @ 150–300 dpi, header/footer al
 - Two other ways in, for when a scan is not wanted: **Upload a photo** (same detection, straightening and
   colour correction, just without the camera) and **Upload a PDF** (a scanner app's file, stored as it is,
   ≤ 12 MB). A PDF is shown on the record and on the customer page as a document tile rather than a picture.
+  While nothing is filed, the *Paperwork* card is collapsed to a single strip — its title, the *missing*
+  chip and those three buttons — and the proof area, the measurement list and the send step appear the
+  moment a picture or a PDF lands (`#signedCard[data-state]` is what switches it).
 - The scanner's finish is chosen per page: **Colour** keeps white paper with the pen and the stamp in
   colour (the yellow cast of an indoor lamp is divided out), **Grey & white** produces a plain photocopy.
 - The public link is `/s/<32-char token>`; the token lives in `quotations.share_token` and is minted with

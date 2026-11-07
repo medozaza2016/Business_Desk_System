@@ -1718,21 +1718,32 @@ tbody tr:nth-child(n+7) { animation-delay: .13s; }
   box-shadow: 0 14px 38px -22px #1119, 0 0 0 1px #d9d4ca;
 }
 
-.signed-empty {
+/* Until a page is filed the card is one strip: the title, the chip and the three
+   ways to file the paper. The proof area, the measurements and the send hint
+   only say something once there is paper behind them, so a fresh record does
+   not open on half a screen of dashed frame and a column of em dashes. */
+.signed[data-state="empty"] .signed-body { grid-template-columns: minmax(0, 1fr); }
+
+.signed[data-state="empty"] .signed-frame,
+.signed[data-state="empty"] .signed-meta,
+.signed[data-state="empty"] .signed-hint { display: none; }
+
+.signed[data-state="empty"] .signed-side { padding: 12px 18px; }
+
+/* one row, three doors: the shutter, a photo already on the phone, a PDF */
+.signed[data-state="empty"] .signed-buttons {
   display: grid;
-  gap: 6px;
-  max-width: 340px;
-  padding: 10px;
-  text-align: center;
-  color: var(--muted);
-  font-size: 12.5px;
-  line-height: 1.6;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
 }
 
-.signed-empty b {
-  color: var(--ink);
-  font-size: 15px;
-  letter-spacing: -.01em;
+/* the two upload buttons become cells of that row instead of a row of their own */
+.signed[data-state="empty"] .signed-uploads { display: contents; }
+
+.signed[data-state="empty"] .signed-buttons .btn {
+  min-height: 36px;
+  padding: 0 10px;
+  font-size: 11.5px;
 }
 
 .signed-stamp {
@@ -2090,6 +2101,10 @@ dialog.scanner::backdrop { background: #14120ee6; }
   .signed-meta { grid-template-columns: minmax(0, 1fr); }
   .signed-stamp { right: 12px; bottom: 12px; font-size: 10px; letter-spacing: .16em; }
   .signed-hint { font-size: 11px; }
+
+  /* the collapsed strip stacks: three buttons are one too many for a phone row */
+  .signed[data-state="empty"] .signed-buttons { grid-template-columns: minmax(0, 1fr); }
+  .signed[data-state="empty"] .signed-side { padding: 12px 14px; }
 
   /* the stage gets the full height between the two bars */
   .scanner-head { padding: 10px 12px; }
