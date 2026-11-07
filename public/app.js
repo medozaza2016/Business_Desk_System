@@ -33,6 +33,11 @@ const state = {
   templateKind: "quotation",
   /** versions of every kind, keyed by kind, so the tabs can show each one's live page */
   templateSheets: {},
+  /** which tab of the studio frame is in front: "preview" (the default) or "html" */
+  sheetTab: "preview",
+  /** the buffer the frame is showing, so an unchanged buffer never re-posts */
+  proofHtml: null,
+  proofKind: null,
   settings: null,
   settingsOpen: false,
   settingsPane: "company",
@@ -1225,48 +1230,123 @@ function paintGuide() {
   $("guideCount").textContent = `${count} placeholders`;
 }
 
-/**
- * Opens the tab a proof sheet gets written into, straight from the click handler and before any
- * await: a window opened after a round trip has lost the operator's gesture and gets blocked.
- * A4 pinned next to the editor used to cover the guide underneath it, so proofs are on request
- * and in their own tab now. Returns null when the browser refused the window.
- */
-function openProofWindow() {
-  const win = window.open("", "_blank");
-  if (!win) {
-    toast("Allow pop-ups for this site to open a proof sheet.", "error");
-    return null;
-  }
-  win.document.write(
-    "<!doctype html><title>Proof sheet</title>"
-    + "<p style=\"margin:0;padding:28px;font:13px/1.5 Arial,Helvetica,sans-serif;color:#6e6a62\">"
-    + "Rendering the sheet&hellip;</p>"
-  );
-  win.document.close();
-  return win;
-}
+/* ------------------------------------------------------------ proof frame --- */
 
-/**
- * Writes a server-rendered sheet into its proof tab. The new document inherits this tab's origin,
- * so the sheet's same-origin logo and letterhead load, but it does not inherit its path — hence
- * the <base>, without which every root-relative URL inside the sheet would go nowhere.
- */
-function fillProofWindow(win, html, note) {
-  if (!win || win.closed) return;
-  const base = `<base href="${location.origin}/">`;
-  const sheet = /<head[^>]*>/i.test(html)
-    ? html.replace(/<head([^>]*)>/i, (tag) => `${tag}${base}`)
-    : `${base}${html}`;
-  win.document.open();
-  win.document.write(sheet);
-  win.document.close();
-  if (note) studioHint(note);
-}
+const A4_W = 793.7;   // 210mm at 96dpi
+const A4_H = 1122.5;  // 297mm at 96dpi
 
-/** Sets the status line under the editor's buttons: what the last proof was rendered from. */
+/** Every proof bumps this; a response that comes back after a newer proof is dropped. */
+let proofTicket = 0;
+
+/** Sets the status line under the frame's buttons: what the last proof was rendered from. */
 function studioHint(text) {
   const note = $("studioNote");
   if (note) note.textContent = text;
+}
+
+/**
+ * The proof and the markup share one frame, so the A4 page has to fit the frame's pane
+ * instead of a window of its own: scale the sheet down to the pane's width and let the pane
+ * scroll whatever is left. Called on every proof, tab switch, pane switch and resize.
+ */
+function fitSheetProof() {
+  const stage = $("sheetPreviewPane");
+  const frame = $("sheetProofFrame");
+  if (!stage || !frame || frame.hidden) return;
+  /* read the pane's padding instead of assuming 14px: it tightens on narrow screens */
+  const style = getComputedStyle(stage);
+  const available = stage.hidden
+    ? 0
+    : stage.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
+  /* while the settings pane is hidden there is no width to measure: show the sheet unscaled,
+     and the pane switch (or the next resize) fits it to the space it really has */
+  const scale = available > 0 ? Math.min(available / A4_W, 1) : 1;
+  frame.style.width = `${Math.round(A4_W * scale)}px`;
+  frame.style.height = `${Math.round(A4_H * scale)}px`;
+  $("templatePreview").style.transform = `scale(${scale})`;
+}
+
+/** Hides the proof and says why: nothing loaded yet, or the Worker refused the buffer. */
+function emptyProof(message) {
+  $("sheetProofFrame").hidden = true;
+  $("templatePreview").removeAttribute("srcdoc");
+  const note = $("sheetProofEmpty");
+  note.textContent = message;
+  note.hidden = false;
+}
+
+/** The buffer is gone (another kind, another company, a deleted version): drop its proof too. */
+function clearProof(message = "Nothing to proof yet — open a version or load the built-in sheet.") {
+  state.proofHtml = null;
+  state.proofKind = state.templateKind;
+  emptyProof(message);
+}
+
+/**
+ * Renders the editor's buffer — unsaved edits included — into the Preview tab through the
+ * same Worker path as /print, so the frame and the printed sheet cannot drift apart. The
+ * round trip is skipped when the buffer has not moved since the last proof, unless forced
+ * (Refresh proof), and a slower older response can never overwrite a newer one.
+ */
+async function proofBuffer({ force = false, note = "" } = {}) {
+  const company = activeCompany();
+  const label = sheetLabel(state.templateKind).toLowerCase();
+  if (!company) { clearProof("Select a company to proof its sheets."); return; }
+  const buffer = $("templateHtml").value;
+  if (!buffer.trim()) {
+    clearProof(`Nothing to proof yet — open a version or load the built-in ${label} sheet.`);
+    return;
+  }
+  if (!force && buffer === state.proofHtml && state.templateKind === state.proofKind) return;
+  const ticket = ++proofTicket;
+  try {
+    const data = await api(`/api/companies/${encodeURIComponent(company.id)}/templates/preview`, {
+      method: "POST",
+      body: { html: buffer, kind: state.templateKind },
+    });
+    if (ticket !== proofTicket) return;
+    state.proofHtml = buffer;
+    state.proofKind = state.templateKind;
+    $("sheetProofEmpty").hidden = true;
+    const frame = $("sheetProofFrame");
+    frame.hidden = false;
+    fitSheetProof();
+    /* srcdoc keeps this page as the document's base URL, so the sheet's same-origin logo and
+       letterhead resolve exactly as they do on the printed page */
+    $("templatePreview").srcdoc = data.html;
+    studioHint(note || `${sampleNote(data, "proof")} · rendered in the frame`);
+  } catch (error) {
+    if (ticket !== proofTicket) return;
+    state.proofHtml = null;
+    emptyProof(humanError(error));
+  }
+}
+
+/**
+ * Switches the frame between the paper and the markup. Landing on Preview proofs the buffer
+ * first, so an edit made on the HTML tab is always what the next proof shows.
+ */
+function showSheetTab(name, { focus = false, force = false } = {}) {
+  state.sheetTab = name === "html" ? "html" : "preview";
+  for (const tab of $("sheetTabs").querySelectorAll(".sheet-tab")) {
+    const on = tab.dataset.sheetTab === state.sheetTab;
+    tab.setAttribute("aria-selected", on ? "true" : "false");
+    tab.tabIndex = on ? 0 : -1;
+    if (on && focus) tab.focus();
+  }
+  $("sheetPreviewPane").hidden = state.sheetTab !== "preview";
+  $("sheetHtmlPane").hidden = state.sheetTab !== "html";
+  if (state.sheetTab === "html") {
+    if (focus) $("templateHtml").focus();
+    return;
+  }
+  fitSheetProof();
+  void proofBuffer({ force });
+}
+
+/** The frame's Refresh proof button: same buffer, a fresh round trip. */
+function refreshProof() {
+  showSheetTab("preview", { force: true });
 }
 
 /** One line under the preview: which sample record the sheet was proofed with. */
@@ -1360,6 +1440,7 @@ async function refreshStudio() {
   $("editorHint").textContent = "flat {{placeholders}}";
   $("templateChip").textContent = "loading";
   $("templateMeta").textContent = "loading versions";
+  clearProof("Loading versions…");
   studioHint("loading versions");
   await loadTemplates();
 }
@@ -1376,6 +1457,7 @@ async function selectSheetKind(kind) {
   $("editorHint").textContent = "flat {{placeholders}}";
   $("templateChip").textContent = "loading";
   $("templateMeta").textContent = "loading versions";
+  clearProof(`Loading ${sheetLabel(kind).toLowerCase()} versions…`);
   paintSheetKinds();
   const url = new URL(location.href);
   if (url.searchParams.get("view") === "settings") url.searchParams.set("sheet", kind);
@@ -1428,9 +1510,17 @@ async function loadTemplates(selectId) {
     || (versions.some((t) => t.id === state.templateEditId) ? state.templateEditId : null)
     || live?.id;
   if (target) await openTemplate(target);
-  else studioHint(`the built-in ${label.toLowerCase()} sheet prints until you publish one`);
+  else {
+    studioHint(`the built-in ${label.toLowerCase()} sheet prints until you publish one`);
+    clearProof(`Nothing to proof yet — open a version or load the built-in ${label.toLowerCase()} sheet.`);
+  }
 }
 
+/**
+ * Puts one stored version in the buffer. The frame follows: if the Preview tab is in front it
+ * proofs the new buffer straight away, otherwise the old proof is dropped so the next switch
+ * to Preview cannot show the previous version's paper.
+ */
 async function openTemplate(templateId) {
   const company = activeCompany();
   if (!company) return;
@@ -1440,48 +1530,20 @@ async function openTemplate(templateId) {
     $("templateName").value = "";
     state.templateEditId = templateId;
     $("editorHint").textContent = `editing v${data.template.version}`;
+    state.proofHtml = null;
     markActiveVersion();
-    studioHint(`editing v${data.template.version} — Preview edits proofs the buffer in a new tab`);
+    studioHint(`editing v${data.template.version} — the Preview tab proofs the buffer`);
+    if (state.sheetTab === "preview") await proofBuffer({ note: `v${data.template.version} · rendered in the frame` });
   } catch (error) {
     toast(humanError(error), "error");
   }
 }
 
-/** Proofs one saved version in its own tab; the version rows' Preview button lands here. */
+/** The version rows' Preview button: the version goes in the buffer and the frame shows it. */
 async function previewTemplate(template) {
-  const company = activeCompany();
-  if (!company) return;
-  const win = openProofWindow();
-  if (!win) return;
-  try {
-    const data = await api(
-      `/api/companies/${encodeURIComponent(company.id)}/templates/${encodeURIComponent(template.id)}/preview`
-    );
-    fillProofWindow(win, data.html, sampleNote(data, `v${template.version}`));
-  } catch (error) {
-    if (!win.closed) win.close();
-    toast(humanError(error), "error");
-  }
-}
-
-/** Proofs the editor's buffer — unsaved edits included — without touching the stored versions. */
-async function previewDraft() {
-  const company = activeCompany();
-  if (!company) return;
-  const html = $("templateHtml").value;
-  if (!html.trim()) { toast("The template cannot be empty.", "error"); return; }
-  const win = openProofWindow();
-  if (!win) return;
-  try {
-    const data = await api(`/api/companies/${encodeURIComponent(company.id)}/templates/preview`, {
-      method: "POST",
-      body: { html, kind: state.templateKind },
-    });
-    fillProofWindow(win, data.html, sampleNote(data, "unsaved edits"));
-  } catch (error) {
-    if (!win.closed) win.close();
-    toast(humanError(error), "error");
-  }
+  await openTemplate(template.id);
+  /* openTemplate already proofs when Preview is in front; otherwise the switch does it */
+  if (state.sheetTab !== "preview") showSheetTab("preview");
 }
 
 async function loadActiveTemplate() {
@@ -1499,13 +1561,16 @@ async function loadBuiltinSheet() {
     const data = await api(
       `/api/companies/${encodeURIComponent(company.id)}/templates/default?kind=${encodeURIComponent(state.templateKind)}`
     );
+    const label = (data.label || sheetLabel(state.templateKind)).toLowerCase();
     state.templateEditId = null;
     markActiveVersion();
     $("templateHtml").value = data.html || "";
     $("templateName").value = "";
-    $("editorHint").textContent = `built-in ${(data.label || sheetLabel(state.templateKind)).toLowerCase()}`;
-    studioHint(`built-in ${(data.label || sheetLabel(state.templateKind)).toLowerCase()} loaded — Preview edits proofs it`);
-    toast(`Built-in ${(data.label || sheetLabel(state.templateKind)).toLowerCase()} loaded — publish to make it yours.`);
+    $("editorHint").textContent = `built-in ${label}`;
+    state.proofHtml = null;
+    studioHint(`built-in ${label} loaded — the Preview tab proofs it`);
+    if (state.sheetTab === "preview") await proofBuffer({ note: `built-in ${label} · rendered in the frame` });
+    toast(`Built-in ${label} loaded — publish to make it yours.`);
   } catch (error) {
     toast(humanError(error), "error");
   }
@@ -1573,6 +1638,7 @@ async function deleteTemplate(template) {
       state.templateEditId = null;
       $("templateHtml").value = "";
       $("editorHint").textContent = "flat {{placeholders}}";
+      clearProof("The version was deleted — open another or load the built-in sheet.");
     }
     await loadTemplates();
   } catch (error) {
@@ -1971,6 +2037,8 @@ function showSettingsPane(name, { remember = true } = {}) {
     history.replaceState(null, "", url);
   }
   if (pane === "audit") void loadAuditTrail();
+  /* the frame was hidden, so its proof could not be measured: size it now that it is on screen */
+  if (pane === "template") fitSheetProof();
 }
 
 function showView(name) {
@@ -2171,8 +2239,23 @@ function bind() {
   $("newCompanyForm").addEventListener("submit", createCompany);
   $("templateSave").addEventListener("click", publishTemplate);
   $("templateLoad").addEventListener("click", loadActiveTemplate);
-  $("templatePreviewDraft").addEventListener("click", previewDraft);
+  $("templatePreviewDraft").addEventListener("click", refreshProof);
   $("templateDefault").addEventListener("click", loadBuiltinSheet);
+  $("sheetTabs").addEventListener("click", (event) => {
+    const tab = event.target.closest(".sheet-tab");
+    if (tab) showSheetTab(tab.dataset.sheetTab);
+  });
+  /* left/right arrows walk the frame's two tabs, the way a tab strip is expected to behave */
+  $("sheetTabs").addEventListener("keydown", (event) => {
+    if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+    const names = ["preview", "html"];
+    const here = names.indexOf(state.sheetTab);
+    const next = names[(here + (event.key === "ArrowRight" ? 1 : names.length - 1)) % names.length];
+    event.preventDefault();
+    showSheetTab(next, { focus: true });
+  });
+  /* the A4 page is scaled to the pane it sits in, so a new width needs a new scale */
+  window.addEventListener("resize", fitSheetProof);
   $("templateKinds").addEventListener("click", (event) => {
     const tab = event.target.closest(".studio-kind");
     if (tab) void selectSheetKind(tab.dataset.kind);

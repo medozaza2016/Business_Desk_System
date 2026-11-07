@@ -275,10 +275,11 @@ collapsible panel under the editor that lists every placeholder for the tab you 
 6. **Keep it inert.** No `<script>` (the CSP refuses it), no forms, no remote images — same-origin images and
    `data:` URIs only. A sheet cannot fetch anything at print time, so everything it shows must already be in
    the record or the company profile.
-7. **Proof, then publish.** *Preview edits* opens the buffer in its own tab, rendered with sample values
-   (next `SA-…` / `PA-…` number, sample parties including a broker, sample vehicle and money) without saving.
-   When the proof reads right, **Publish version** makes it live for new records only; issued ones keep their
-   snapshot.
+7. **Proof, then publish.** The frame under the version list has two tabs: **Preview** (the default)
+   renders the buffer with sample values (next `SA-…` / `PA-…` number, sample parties including a
+   broker, sample vehicle and money) and saves nothing; **HTML** is the markup itself. Switch to Preview
+   after an edit and the sheet is re-rendered; *Refresh proof* forces a fresh render. When the proof
+   reads right, **Publish version** makes it live for new records only; issued ones keep their snapshot.
 
 Tokens are flat substitutions: there are no loops, conditionals, filters or arithmetic. Anything that
 repeats, such as the vehicle table, is written out once in the template; anything that has to adapt is done
@@ -294,9 +295,10 @@ sheet never touches the quotation page.
    current live version there instead.
 2. Edit, then **Publish version**. A new version is stored and immediately becomes the live one. Older
    versions stay in the list and can be re-activated at any time.
-3. **Preview edits** proofs the buffer without saving, in a tab of its own (so a full A4 page never sits on
-   top of the editor). Agreement tabs proof with sample parties (seller, buyer, broker), the sample vehicle
-   and the kind's next number (`SA-…` / `PA-…`), so every agreement placeholder is visible before it goes live.
+3. **Preview** proofs the buffer without saving, in the frame beside the version list — one box with
+   two tabs, Preview first, HTML second, so the markup and the sheet never need separate windows.
+   Agreement tabs proof with sample parties (seller, buyer, broker), the sample vehicle and the kind's
+   next number (`SA-…` / `PA-…`), so every agreement placeholder is visible before it goes live.
 
 Existing quotations and agreements keep the HTML they were issued with; a tab with no published version
 prints the built-in sheet for that kind.
@@ -323,6 +325,9 @@ Consequences for template authors:
 - Fonts must be same-origin or `data:`. The default template uses Arial (plus Tahoma/DejaVu fallbacks for
   Arabic) because system fonts print identically to what the operator sees on screen.
 - No forms (`form-action 'none'`), no framing by other sites (`frame-ancestors 'self'`).
+- The studio's **Preview** tab applies the same rule on the client side: the proof is rendered into a
+  `sandbox="allow-same-origin"` iframe, so a template's `<script>` stays inert there too while its
+  same-origin logo still loads.
 
 ## Letterhead
 

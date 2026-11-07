@@ -29,7 +29,8 @@ Live: <https://desk.luxoritpro.com>
 - Bilingual A4 print sheet positioned in millimetres over a letterhead background, printed by the
   browser (Save as PDF) — no PDF service, no stored binaries.
 - Versioned HTML templates per company; the issued sheet is a snapshot, so later edits never rewrite
-  history.
+  history. The template studio is one frame with two tabs — the rendered A4 proof (the default) and the
+  HTML behind it — so a redesign is checked on the paper without leaving the page.
 - Live A4 preview inside the quotation record page, editable details, soft cancel, per-company CSV
   export, and an audit trail of every mutation.
 - **Signed copy per quotation**, captured with an in-app scanner: the page outline is detected live, the

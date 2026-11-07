@@ -56,7 +56,7 @@ pending with `npx wrangler d1 migrations list challenger-quotation-db --remote`,
 database that already holds paper, export it first
 (`npx wrangler d1 export challenger-quotation-db --remote --output backup.sql`).
 
-Every page states the build it is running at its foot (`Version 1.2.0`). The label comes from
+Every page states the build it is running at its foot (`Version 1.3.0`). The label comes from
 `public/version.json` through `public/version.js`, so a release bumps that JSON (and the matching
 fallback constant in `version.js`) and the desk, the quotation record and the agreement record are
 relabelled together.
@@ -177,9 +177,9 @@ Agreements reuse every mechanism above and live beside the quotations rather tha
   published one prints the built-in default sheet for that kind.
 - Sheets are managed exactly like the quotation page: **Settings → Print templates** holds three tabs
   (*Quotation*, *Sale agreement*, *Purchase agreement*), each with its own version list, its own live page and
-  its own editor. *Load built-in* seeds the editor from the bundled sheet for that kind, so an agreement page
-  can be started from the real document instead of a blank textarea. Versions are counted per kind, so the
-  first sale sheet is `Sale agreement v1` even when the company already ran `Quotation v6`
+  its own Preview/HTML frame. *Load built-in* seeds the HTML tab from the bundled sheet for that kind, so an
+  agreement page can be started from the real document instead of a blank textarea. Versions are counted per
+  kind, so the first sale sheet is `Sale agreement v1` even when the company already ran `Quotation v6`
   (migration `0008_template_versions_per_kind.sql` widened the old `UNIQUE(company_id, version)` key).
 - The studio proofs an agreement sheet with sample parties, the sample vehicle and the kind's next number
   (`SA-2026-0000n` / `PA-2026-0000n`), so every agreement placeholder is exercised before publishing. Nothing

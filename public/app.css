@@ -708,8 +708,9 @@ body:has(dialog.modal[open]) { overflow: hidden; }
 .settings-pane[hidden] { display: none; }
 
 /* template studio — one column: the sheet tabs, the guide, then the versions list and the
-   editor. Proof sheets are never painted inline any more: a full A4 page pinned beside the
-   editor covered the guide underneath it, so proofs open in their own tab on request. */
+   frame that holds the sheet itself. The frame has two tabs of its own: Preview (the default,
+   an A4 page scaled to fit the pane) and HTML (the markup). One box, so the studio never needs
+   a popup window and the buttons underneath never move when the proof is long. */
 .studio {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -813,8 +814,136 @@ body:has(dialog.modal[open]) { overflow: hidden; }
 .version-actions .btn { min-height: 26px; padding: 0 8px; font-size: 10.5px; }
 .version-empty { padding: 12px 0; font-size: 12.5px; color: var(--muted); }
 
-/* the editor owns the full studio width now, so give it a taller box */
-.studio-col textarea { min-height: 420px; }
+/* one frame, two tabs: the proof of the sheet and the HTML that makes it. Preview is the
+   default tab, so the studio opens on the paper instead of on the markup, and neither the
+   raw HTML nor a popup window is needed to see what the sheet will look like. The bar holds
+   the tabs, what is in the buffer and the proof refresh; the body is a fixed height, so
+   switching tabs never moves the buttons underneath it. */
+.sheet-frame {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: #fff;
+  overflow: hidden;
+}
+
+.sheet-frame-bar {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  padding: 6px 8px 0;
+  border-bottom: 1px solid var(--line);
+  background: #fffdfa;
+}
+
+.sheet-tabs { display: flex; gap: 2px; }
+
+.sheet-tab {
+  padding: 7px 14px 6px;
+  border: 1px solid transparent;
+  border-bottom: 0;
+  border-radius: 6px 6px 0 0;
+  background: transparent;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.sheet-tab:hover { color: var(--ink-soft); background: #f5f2ec; }
+.sheet-tab:focus-visible { outline: 2px solid #c51e2540; outline-offset: 1px; }
+
+.sheet-tab[aria-selected="true"] {
+  border-color: var(--line);
+  background: #fff;
+  color: var(--ink);
+  box-shadow: inset 0 2px 0 var(--red);
+  /* the tab sits on the bar's border and hides the one pixel under itself, so the paper
+     below reads as the same surface */
+  margin-bottom: -1px;
+}
+
+/* what is in the buffer right now: "editing v3", "built-in quotation" */
+.sheet-frame-meta {
+  margin: 0 0 7px auto;
+  min-width: 0;
+  overflow: hidden;
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: .06em;
+  color: var(--muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sheet-frame-bar .btn { min-height: 26px; margin-bottom: 5px; padding: 0 9px; font-size: 10.5px; white-space: nowrap; }
+
+.sheet-frame-body { position: relative; height: clamp(380px, 58vh, 680px); min-height: 0; }
+
+.sheet-pane { height: 100%; min-height: 0; }
+.sheet-pane[hidden] { display: none; }
+
+/* the proof stage: the printed A4 page on the same workbench background the record page
+   uses, scrolled inside the frame so a full sheet never pushes the studio around */
+.sheet-pane-proof {
+  display: grid;
+  align-content: start;
+  justify-content: center;
+  padding: 14px;
+  overflow: auto;
+  background: repeating-linear-gradient(45deg, #eae7e1 0 8px, #eeebe5 8px 16px);
+}
+
+.sheet-proof-frame {
+  position: relative;
+  background: #fff;
+  box-shadow: 0 10px 34px -18px #1119, 0 0 0 1px #d9d4ca;
+  overflow: hidden;
+}
+
+.sheet-proof-frame[hidden] { display: none; }
+
+.sheet-proof-frame iframe {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 210mm;
+  height: 297mm;
+  border: 0;
+  background: #fff;
+  transform-origin: top left;
+}
+
+.sheet-proof-empty {
+  margin: 0;
+  max-width: 46ch;
+  padding: 28px 18px;
+  border: 1px dashed #d3cec3;
+  border-radius: var(--radius);
+  background: #fffdfa;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--muted);
+  text-align: center;
+}
+
+.sheet-proof-empty[hidden] { display: none; }
+
+/* the editor fills the same box the proof does — no second height to keep in sync */
+.sheet-pane textarea {
+  height: 100%;
+  min-height: 0;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  resize: none;
+}
+
+.sheet-pane textarea:focus { box-shadow: none; }
 
 /* one-line status under the editor's buttons: what the last proof was rendered from */
 .studio-hint {
@@ -1202,6 +1331,14 @@ hr.rule { border: 0; border-top: 1px dashed var(--line); margin: 16px 0; }
 @media (max-width: 760px) {
   /* three sheet cards would be unreadable side by side on a phone */
   .studio-kinds { grid-template-columns: minmax(0, 1fr); gap: 6px; }
+
+  /* the frame keeps its tabs on one line: smaller type, tighter padding, and the meta
+     label gives way before the tabs or the refresh button do */
+  .sheet-frame-bar { flex-wrap: wrap; padding: 6px 6px 0; gap: 6px; }
+  .sheet-tab { padding: 7px 10px 6px; font-size: 10.5px; letter-spacing: .06em; }
+  .sheet-frame-meta { order: 3; flex: 1 1 100%; margin: 0 0 6px; }
+  .sheet-frame-body { height: clamp(320px, 54vh, 520px); }
+  .sheet-pane-proof { padding: 8px; }
 }
 
 @media (max-width: 1080px) {
