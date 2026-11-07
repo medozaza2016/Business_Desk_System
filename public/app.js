@@ -1,7 +1,8 @@
 /* Challenger Quotation Desk — client
-   No framework, no build step. Views: gate → modules → quotation workspace / vehicle
-   agreement ledger / settings. The agreement wizard lives in agreement-wizard.js and
-   the record page has its own agreement.js; this file owns the ledgers. */
+   No framework, no build step. Views: gate → modules → quotation book / vehicle
+   agreement book / settings. Both books share the ledger machinery; a quotation is
+   asked for in a dialog, an agreement in a six-step wizard (agreement-wizard.js).
+   The record pages have their own quote.js and agreement.js; this file owns the books. */
 
 import { confirmAction } from "./dialog.js";
 import { openAgreementWizard } from "./agreement-wizard.js";
@@ -353,13 +354,12 @@ function switchCompany(id) {
 let nextNumberRequest = 0;
 
 async function refreshNextNumber() {
-  const requestId = ++nextNumberRequest;
   const numberField = $("quoteNumber");
-  const company = activeCompany();
   numberField.value = "";
-  if (!company) {
-    return;
-  }
+  const company = activeCompany();
+  /* Nothing to preview while the dialog is shut: the number is asked for when it opens. */
+  if (!company || !$("quoteDialog").open) return;
+  const requestId = ++nextNumberRequest;
   const date = $("quoteDate").value || todayLocal();
   try {
     const data = await api(`/api/quotations/next-number?company_id=${encodeURIComponent(company.id)}&date=${encodeURIComponent(date)}`);
@@ -371,7 +371,7 @@ async function refreshNextNumber() {
   }
 }
 
-/* ---------------------------------------------------------------- ledger --- */
+/* -------------------------------------------------------- quotation book --- */
 
 /* `label` becomes the caption shown above the value once rows render as cards on phones. */
 function rowCell(text, className, label) {
@@ -391,7 +391,7 @@ function renderQuotes() {
   $("emptyState").hidden = total > 0;
   $("emptyState").innerHTML = isDeleted
     ? "<b>No deleted quotations</b> Deleted records for this company will appear here."
-    : "<b>No quotations yet</b> Enter a vehicle on the left to issue the first record.";
+    : "<b>No quotations yet</b> Start one with New quotation: the sheet is numbered and frozen when it is saved.";
   $("quoteActionsHead").hidden = !isDeleted;
   $("csvLink").hidden = isDeleted;
   for (const button of $("quoteView").querySelectorAll("button")) {
@@ -460,7 +460,7 @@ function renderQuotes() {
 
 /** The ledger order switch: the number is the paper's own sort key. */
 function paintSort() {
-  for (const button of $("ledgerSort").querySelectorAll("button")) {
+  for (const button of $("quoteSort").querySelectorAll("button")) {
     button.setAttribute("aria-pressed", button.dataset.sort === state.sort ? "true" : "false");
   }
 }
@@ -515,6 +515,45 @@ async function permanentlyDeleteQuotation(id, quoteNumber) {
   }
 }
 
+/** The dialog's own error line: a refused sheet stays on screen to be corrected. */
+function quoteError(message) {
+  const line = $("quoteError");
+  line.textContent = message || "";
+  line.hidden = !message;
+}
+
+/** A fresh sheet: today's date, nothing typed, and a number the server fills in. */
+function resetQuoteForm() {
+  for (const id of ["model", "year", "chassis", "comments", "amount"]) $(id).value = "";
+  $("quoteDate").value = todayLocal();
+  $("quoteNumber").value = "";
+  quoteError("");
+}
+
+/**
+ * A quotation is one sheet of paper, so it is asked for in one pass instead of sitting in a
+ * form pinned beside the ledger: the book keeps the full width and the dialog opens only when
+ * a record is wanted. The number is a preview — the Worker allocates it on save.
+ */
+function openQuoteDialog() {
+  const company = activeCompany();
+  if (!company) {
+    toast("Add a company first in Settings.", "error");
+    return;
+  }
+  const dialog = $("quoteDialog");
+  /* Already open: a second press must not wipe what has been typed. */
+  if (dialog.open) {
+    $("model").focus();
+    return;
+  }
+  resetQuoteForm();
+  $("currencyTag").textContent = company.currency || "AED";
+  dialog.showModal();
+  void refreshNextNumber();
+  $("model").focus();
+}
+
 async function submitQuote(event) {
   event.preventDefault();
   const company = activeCompany();
@@ -528,28 +567,31 @@ async function submitQuote(event) {
     comments: $("comments").value.trim(),
     amount: $("amount").value.trim(),
   };
-  if (!payload.model || !payload.year || !payload.chassis || !payload.amount) {
-    toast("Model, year, chassis and value are required.", "error");
+  if (!payload.model || !payload.year || !payload.chassis) {
+    quoteError("Model, year and chassis are required.");
     return;
   }
-  const button = event.target.querySelector('button[type="submit"]');
+  if (!payload.amount) {
+    quoteError("Enter the estimated value for the vehicle.");
+    return;
+  }
+  const button = $("quoteSave");
   button.disabled = true;
   try {
     const data = await api("/api/quotations", { method: "POST", body: payload });
+    $("quoteDialog").close();
     toast(`Saved ${data.quotation.quote_number}`);
-    for (const id of ["model", "year", "chassis", "comments", "amount"]) $(id).value = "";
-    $("model").focus();
-    await refreshNextNumber();
+    resetQuoteForm();
     if (state.quoteView !== "active") state.quoteView = "active";
     await loadQuotes();
   } catch (error) {
-    toast(humanError(error), "error");
+    quoteError(humanError(error));
   } finally {
     button.disabled = false;
   }
 }
 
-/* ------------------------------------------------------ agreement ledger --- */
+/* -------------------------------------------------------- agreement book --- */
 
 const AGREEMENT_KIND_TEXT = {
   sale: { title: "Sale agreements", lede: "Vehicles the company sells, priced and signed." },
@@ -2017,9 +2059,7 @@ async function boot() {
   $("topbar").hidden = false;
   $("gate").hidden = true;
   await loadCompanies();
-  $("quoteDate").value = todayLocal();
   await loadSettings();
-  await refreshNextNumber();
   await loadQuotes();
   const requestedView = new URLSearchParams(location.search).get("view");
   if (requestedView === "settings") await openSettings();
@@ -2039,6 +2079,15 @@ function openModuleCard(card) {
 function bind() {
   $("gateForm").addEventListener("submit", submitGate);
   $("quoteForm").addEventListener("submit", submitQuote);
+  $("newQuoteBtn").addEventListener("click", openQuoteDialog);
+  $("quotesBack").addEventListener("click", () => showView("modules"));
+  $("quoteClose").addEventListener("click", () => $("quoteDialog").close());
+  $("quoteCancel").addEventListener("click", () => $("quoteDialog").close());
+  /* a cancelled dialog is not a failed one: drop the refusal and re-arm the button */
+  $("quoteDialog").addEventListener("close", () => {
+    quoteError("");
+    $("quoteSave").disabled = false;
+  });
   $("companySelect").addEventListener("change", () => switchCompany($("companySelect").value));
   $("quoteDate").addEventListener("change", refreshNextNumber);
   $("logoutBtn").addEventListener("click", () => signOut());
@@ -2134,7 +2183,7 @@ function bind() {
   });
   $("auditLoadMore").addEventListener("click", () => { void loadAuditTrail({ append: true }); });
   $("passcodeForm").addEventListener("submit", rotatePasscode);
-  $("ledgerSort").addEventListener("click", (event) => {
+  $("quoteSort").addEventListener("click", (event) => {
     const button = event.target.closest("button[data-sort]");
     if (!button || button.dataset.sort === state.sort) return;
     state.sort = button.dataset.sort === "date" ? "date" : "number";
@@ -2199,7 +2248,7 @@ function bind() {
     if (event.key.toLowerCase() === "n" && !typing && !state.settingsOpen) {
       event.preventDefault();
       if (!$("agreementsView").hidden) openAgreementWizardFor();
-      else $("model").focus();
+      else if (!$("workspaceView").hidden) openQuoteDialog();
     }
   });
 }

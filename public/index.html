@@ -135,7 +135,7 @@
     <footer class="landing-footer">
       <a class="landing-footer-brand" href="/">BUSINESS DESK</a>
       <span>Multi-company vehicle document management.</span>
-      <span class="app-version-label">Version 1.1.0</span>
+      <span class="app-version-label">Version 1.2.0</span>
       <a href="#login">Sign in ↑</a>
     </footer>
   </div>
@@ -194,27 +194,27 @@
     <footer class="module-hub-footer">
       <span>BUSINESS DESK</span>
       <span>Vehicle quotations and transaction agreements, kept distinct.</span>
-      <span class="app-version-label">Version 1.1.0</span>
+      <span class="app-version-label">Version 1.2.0</span>
     </footer>
   </div>
 </main>
 
-<main class="view agreements" id="agreementsView" hidden>
-  <div class="agreements-wrap">
-    <header class="agreements-head">
-      <div class="agreements-title">
+<main class="view" id="agreementsView" hidden>
+  <div class="records-wrap">
+    <header class="records-head">
+      <div class="records-title">
         <p class="eyebrow">Vehicle agreements</p>
         <h1 id="agreementsTitle">Sale agreements</h1>
-        <p class="agreements-lede" id="agreementsLede">Vehicles the company sells, priced and signed.</p>
+        <p class="records-lede" id="agreementsLede">Vehicles the company sells, priced and signed.</p>
       </div>
-      <div class="agreements-head-actions">
+      <div class="records-head-actions">
         <button class="btn ghost small" id="agreementsBack" type="button">← Modules</button>
         <button class="btn primary" id="newAgreementBtn" type="button">New agreement</button>
       </div>
     </header>
 
-    <section class="panel agreements-panel">
-      <div class="agreements-bar">
+    <section class="panel records-panel">
+      <div class="records-bar">
         <div class="segmented" id="agreementKind" role="group" aria-label="Agreement book">
           <button type="button" data-kind="sale" aria-pressed="true">Sale <b data-count="sale">0</b></button>
           <button type="button" data-kind="purchase" aria-pressed="false">Purchase <b data-count="purchase">0</b></button>
@@ -235,7 +235,7 @@
         <button class="btn ghost small" id="agreementSheetBtn" type="button">Print sheet</button>
       </div>
 
-      <div class="table-wrap agreements-table">
+      <div class="table-wrap records-table">
         <table>
           <thead>
             <tr>
@@ -257,7 +257,7 @@
       </div>
     </section>
 
-    <p class="agreements-note">
+    <p class="records-note">
       <span>Numbers are allocated when an agreement is issued</span>
       <span>SA- for sales · PA- for purchases</span>
       <span>The signed page is filed against the record</span>
@@ -266,58 +266,37 @@
 </main>
 
 <main class="view" id="workspaceView" hidden>
-  <div class="workspace">
-    <section class="rail" aria-label="New quotation">
-      <div class="rail-head">
-        <h2>New quotation</h2>
-        <span class="rail-step" id="railStep">01 — entry</span>
+  <div class="records-wrap">
+    <header class="records-head">
+      <div class="records-title">
+        <p class="eyebrow">Quotation management</p>
+        <h1>Quotations</h1>
+        <p class="records-lede">Vehicles priced for a customer, numbered by the desk and frozen as issued.</p>
       </div>
-      <form id="quoteForm" novalidate>
-        <label class="field">
-          <span class="field-label">Quotation no.</span>
-          <span class="prefix read-only-number" aria-label="Automatically generated quotation number">
-            <span class="prefix-tag" aria-hidden="true">AUTO</span>
-            <input id="quoteNumber" type="text" maxlength="60" autocomplete="off" spellcheck="false"
-              placeholder="Generating quotation number…" readonly aria-readonly="true"
-              title="Generated automatically by the server. This field cannot be edited.">
-          </span>
-        </label>
-        <label class="field"><span class="field-label">Date</span><input id="quoteDate" type="date" required></label>
-        <label class="field"><span class="field-label">Vehicle model</span><input id="model" required maxlength="120" placeholder="AUDI A8"></label>
-        <label class="field"><span class="field-label">Year</span><input id="year" required maxlength="20" inputmode="numeric" placeholder="2012"></label>
-        <label class="field"><span class="field-label">Chassis number</span><input id="chassis" required maxlength="120" placeholder="WAUZZZ4H0DN000001"></label>
-        <label class="field">
-          <span class="field-label">Comments <em>optional</em></span>
-          <textarea id="comments" rows="2" maxlength="300" placeholder="One owner, full service history, 2 keys."></textarea>
-        </label>
-        <label class="field">
-          <span class="field-label">Estimated value <em id="currencyTag">AED</em></span>
-          <input id="amount" required inputmode="decimal" placeholder="15,000.00">
-        </label>
-        <button class="btn primary block" type="submit">Save quotation</button>
-        <p class="rail-note">Each saved sheet is an immutable snapshot of the template, company details and amount-in-words at the moment of issue.</p>
-      </form>
-    </section>
+      <div class="records-head-actions">
+        <button class="btn ghost small" id="quotesBack" type="button">← Modules</button>
+        <button class="btn primary" id="newQuoteBtn" type="button">New quotation</button>
+      </div>
+    </header>
 
-    <section class="ledger">
-      <header class="ledger-head">
-        <div class="ledger-actions">
-          <form class="search" id="searchForm">
-            <input id="searchInput" type="search" placeholder="Number, model, chassis" aria-label="Search quotations">
-            <button class="btn ghost small" type="submit">Search</button>
-          </form>
-          <div class="segmented" id="ledgerSort" role="group" aria-label="Order the ledger">
-            <button type="button" data-sort="number" aria-pressed="true">No.</button>
-            <button type="button" data-sort="date" aria-pressed="false">Date</button>
-          </div>
-          <div class="segmented" id="quoteView" role="group" aria-label="Quotation records">
-            <button type="button" data-view="active" aria-pressed="true">Active</button>
-            <button type="button" data-view="deleted" aria-pressed="false">Deleted</button>
-          </div>
-          <a class="btn ghost small" id="csvLink" href="#">Export CSV</a>
+    <section class="panel records-panel">
+      <div class="records-bar">
+        <div class="segmented" id="quoteView" role="group" aria-label="Quotation records">
+          <button type="button" data-view="active" aria-pressed="true">Active</button>
+          <button type="button" data-view="deleted" aria-pressed="false">Deleted</button>
         </div>
-      </header>
-      <div class="table-wrap">
+        <form class="search" id="searchForm">
+          <input id="searchInput" type="search" placeholder="Number, model, chassis" aria-label="Search quotations">
+          <button class="btn ghost small" type="submit">Search</button>
+        </form>
+        <div class="segmented" id="quoteSort" role="group" aria-label="Order the ledger">
+          <button type="button" data-sort="number" aria-pressed="true">No.</button>
+          <button type="button" data-sort="date" aria-pressed="false">Date</button>
+        </div>
+        <a class="btn ghost small" id="csvLink" href="#">Export CSV</a>
+      </div>
+
+      <div class="table-wrap records-table">
         <table>
           <thead>
             <tr>
@@ -332,10 +311,16 @@
         </table>
         <p class="empty" id="emptyState" hidden>
           <b>No quotations yet</b>
-          Enter a vehicle on the left to issue the first record.
+          Start one with New quotation: the sheet is numbered and frozen when it is saved.
         </p>
       </div>
     </section>
+
+    <p class="records-note">
+      <span>The number is allocated when the quotation is saved</span>
+      <span>One counter per company and year</span>
+      <span>Each sheet freezes its template and amount in words</span>
+    </p>
   </div>
 </main>
 
@@ -615,7 +600,7 @@
 </main>
 
 <footer class="app-version-footer" id="appVersionFooter" hidden>
-  <span class="app-version-label">Version 1.1.0</span>
+  <span class="app-version-label">Version 1.2.0</span>
 </footer>
 
 <dialog class="modal wizard" id="agreementWizard" aria-labelledby="awTitle">
@@ -746,6 +731,58 @@
         <button class="btn ghost" id="awBack" type="button" hidden>Back</button>
         <button class="btn primary" id="awNext" type="button">Continue</button>
         <button class="btn primary" id="awCreate" type="submit" hidden>Issue agreement</button>
+      </div>
+    </footer>
+  </form>
+</dialog>
+
+<!-- A quotation is one sheet of paper: the dialog asks for it in one pass, the desk numbers it
+     on save. The field ids are the ones the desk has always used, so numbering and submit are
+     the same code paths they were when the form sat beside the ledger. -->
+<dialog class="modal wizard compact" id="quoteDialog" aria-labelledby="qdTitle">
+  <form class="wizard-card" id="quoteForm" novalidate>
+    <header class="wizard-head">
+      <div>
+        <p class="eyebrow">New quotation</p>
+        <h2 class="wizard-title" id="qdTitle">Quote a vehicle</h2>
+      </div>
+      <button class="btn ghost small" id="quoteClose" type="button">Close</button>
+    </header>
+
+    <div class="wizard-body">
+      <p class="wizard-lede">The desk writes the number; you write the vehicle, the price and anything the sheet must remember.</p>
+      <div class="grid-2">
+        <label class="field"><span class="field-label">Quotation date</span><input id="quoteDate" type="date" required></label>
+        <label class="field">
+          <span class="field-label">Number <em>allocated on save</em></span>
+          <span class="prefix read-only-number" aria-label="Automatically generated quotation number">
+            <span class="prefix-tag" aria-hidden="true">AUTO</span>
+            <input id="quoteNumber" type="text" maxlength="60" autocomplete="off" spellcheck="false"
+              placeholder="Reserving…" readonly aria-readonly="true"
+              title="Generated automatically by the server when the quotation is saved.">
+          </span>
+        </label>
+        <label class="field span-2"><span class="field-label">Vehicle model</span><input id="model" required maxlength="120" placeholder="AUDI A8"></label>
+        <label class="field"><span class="field-label">Year</span><input id="year" required maxlength="20" inputmode="numeric" placeholder="2012"></label>
+        <label class="field"><span class="field-label">Chassis number</span><input id="chassis" required maxlength="120" placeholder="WAUZZZ4H0DN000001"></label>
+        <label class="field span-2 quote-value">
+          <span class="field-label">Estimated value <em id="currencyTag">AED</em></span>
+          <input id="amount" required inputmode="decimal" placeholder="15,000.00">
+        </label>
+        <label class="field span-2">
+          <span class="field-label">Comments <em>optional</em></span>
+          <textarea id="comments" rows="3" maxlength="300" placeholder="One owner, full service history, 2 keys."></textarea>
+        </label>
+      </div>
+      <p class="rail-note">Each saved sheet is an immutable snapshot of the template, company details and amount in words at the moment of issue. Later edits to the template never rewrite it.</p>
+    </div>
+
+    <footer class="wizard-foot">
+      <p class="error" id="quoteError" role="alert" hidden></p>
+      <span class="wizard-count">One sheet, issued on save</span>
+      <div class="wizard-actions">
+        <button class="btn ghost" id="quoteCancel" type="button">Cancel</button>
+        <button class="btn primary" id="quoteSave" type="submit">Save quotation</button>
       </div>
     </footer>
   </form>

@@ -59,9 +59,9 @@ split is at the first space, which is where both live sheets break (`CHALLENGER`
 ## Quotation comments
 
 Every quotation carries an optional free-form note (`comments`, ≤ 300 characters) typed on the desk —
-under *Comments* in the entry rail, and again on the record page (`/quote?id=…`), where it stays
-editable. Newlines and runs of spaces collapse on save, because the row that prints it is a single
-line. Unlike the vehicle fields the note may be cleared: an empty string reprints the row blank.
+under *Comments* in the new-quotation dialog, and again on the record page (`/quote?id=…`), where it
+stays editable. Newlines and runs of spaces collapse on save, because the row that prints it is a
+single line. Unlike the vehicle fields the note may be cleared: an empty string reprints the row blank.
 
 The comment is **not** frozen into the template snapshot — it is read from the quotation itself, so
 fixing a typo on the record page reprints the corrected note.

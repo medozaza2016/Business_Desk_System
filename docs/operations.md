@@ -56,7 +56,7 @@ pending with `npx wrangler d1 migrations list challenger-quotation-db --remote`,
 database that already holds paper, export it first
 (`npx wrangler d1 export challenger-quotation-db --remote --output backup.sql`).
 
-Every page states the build it is running at its foot (`Version 1.1.0`). The label comes from
+Every page states the build it is running at its foot (`Version 1.2.0`). The label comes from
 `public/version.json` through `public/version.js`, so a release bumps that JSON (and the matching
 fallback constant in `version.js`) and the desk, the quotation record and the agreement record are
 relabelled together.

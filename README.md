@@ -18,9 +18,11 @@ Live: <https://desk.luxoritpro.com>
 ## Features
 
 - Vehicle valuation entry with automatic numbering (`QA-2026-00001`, per company and per year) and a
-  read-only number preview that never burns a serial.
-- Optional free-form comment per quotation (`{{comments}}`, ≤300 chars): typed on the entry rail, still
-  editable on the record page, and carried into the CSV export.
+  read-only number preview that never burns a serial. The quotation book is the same page as the
+  agreement book — a stamped header, one toolbar, the table, a strip of mono facts — and the new
+  sheet is asked for in a dialog, opened from **New quotation** (or `n`).
+- Optional free-form comment per quotation (`{{comments}}`, ≤300 chars): typed in the new-quotation
+  dialog, still editable on the record page, and carried into the CSV export.
 - Company switcher in the header; every quotation is scoped to its company.
 - Per-company logo uploaded from the company profile and printed twice: as the header mark and as a
   faint watermark on the A4 sheet (`{{logo_url}}` / `{{logo_state}}`).

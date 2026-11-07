@@ -21,7 +21,6 @@
   --ok-wash: #e9f3ec;
   --radius: 3px;
   --shadow: 0 1px 0 #ffffff inset, 0 1px 2px #1111;
-  --rail: 360px;
   --mono: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
   --sans: Arial, "Helvetica Neue", Helvetica, "Segoe UI", Tahoma, sans-serif;
 }
@@ -317,59 +316,16 @@ textarea {
 
 .error[hidden] { display: none; }
 
-/* ------------------------------------------------------------ workspace --- */
+/* ------------------------------------------------------------ the views --- */
 
 .view { position: relative; z-index: 1; }
 .view[hidden] { display: none; }
-
-.workspace {
-  display: grid;
-  grid-template-columns: var(--rail) minmax(0, 1fr);
-  gap: 22px;
-  align-items: start;
-  max-width: 1500px;
-  margin: 0 auto;
-  padding: 22px 22px 56px;
-}
 
 .panel {
   background: var(--sheet);
   border: 1px solid var(--line);
   border-radius: var(--radius);
   box-shadow: var(--shadow);
-}
-
-/* form rail — a carbon-copy pad: red margin rule, mono hints */
-.rail {
-  position: sticky;
-  top: 80px;
-  border: 1px solid var(--line);
-  border-left: 3px solid var(--red);
-  border-radius: var(--radius);
-  box-shadow: var(--shadow);
-  padding: 20px 20px 22px;
-  background-image:
-    linear-gradient(90deg, #c51e250a 0 1px, transparent 1px),
-    linear-gradient(180deg, #fffefb, #fbf9f5);
-}
-
-.rail-head {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 10px;
-  padding-bottom: 12px;
-  margin-bottom: 14px;
-  border-bottom: 1px solid var(--line);
-}
-
-.rail h2 { margin: 0; font-size: 15px; letter-spacing: -.01em; }
-
-.rail-step {
-  font-family: var(--mono);
-  font-size: 10.5px;
-  letter-spacing: .08em;
-  color: var(--muted);
 }
 
 .field { display: block; margin-bottom: 13px; }
@@ -459,6 +415,8 @@ textarea {
   box-shadow: none;
 }
 
+/* the small print under a field: one line of context, never a whole paragraph —
+   it closes a dialog step, a settings pane or a record card */
 .rail-note {
   margin: 14px 0 0;
   padding-top: 12px;
@@ -484,21 +442,7 @@ textarea {
   background: var(--paper-deep);
 }
 
-/* --------------------------------------------------------------- ledger --- */
-
-.ledger { min-width: 0; }
-
-.ledger-head {
-  display: flex;
-  align-items: flex-end;
-  justify-content: flex-end;
-  gap: 16px;
-  padding-bottom: 12px;
-  margin-bottom: 14px;
-  border-bottom: 2px solid var(--ink);
-}
-
-.ledger-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
+/* --------------------------------------------------------------- tables --- */
 
 .search { display: flex; gap: 6px; align-items: center; }
 
@@ -3658,11 +3602,12 @@ dialog.scanner::backdrop { background: #14120ee6; }
   .workflow-step small { grid-column: 2; }
 }
 
-/* ============================ agreement ledger ============================ */
-/* The second book of the desk: one sheet per kind, the number is the door and the
-   balance is the argument. Same paper stock as the quotation desk, one stamp-red rule. */
+/* ============================== a book of records ============================== */
+/* Both books wear this shell: a stamp-red rule under the page title, one panel holding
+   the toolbar and the table, and a strip of mono facts at the foot. The number is the
+   door and the figures are the argument, whichever book the desk is standing in. */
 
-.agreements-wrap {
+.records-wrap {
   position: relative;
   z-index: 1;
   max-width: 1460px;
@@ -3670,7 +3615,7 @@ dialog.scanner::backdrop { background: #14120ee6; }
   padding: 24px 22px 56px;
 }
 
-.agreements-head {
+.records-head {
   display: flex;
   align-items: flex-end;
   justify-content: space-between;
@@ -3680,23 +3625,23 @@ dialog.scanner::backdrop { background: #14120ee6; }
   border-bottom: 3px solid var(--red);
 }
 
-.agreements-title { min-width: 0; }
+.records-title { min-width: 0; }
 
-.agreements-title h1 {
+.records-title h1 {
   margin: 0;
   font-size: 30px;
   line-height: 1.05;
   letter-spacing: -.02em;
 }
 
-.agreements-lede {
+.records-lede {
   margin: 7px 0 0;
   max-width: 56ch;
   color: var(--muted);
   font-size: 12.5px;
 }
 
-.agreements-head-actions {
+.records-head-actions {
   display: flex;
   align-items: center;
   justify-content: flex-end;
@@ -3704,10 +3649,10 @@ dialog.scanner::backdrop { background: #14120ee6; }
   flex-wrap: wrap;
 }
 
-.agreements-panel { overflow: hidden; }
+.records-panel { overflow: hidden; }
 
 /* the toolbar reads as one strip of stamped controls above the book */
-.agreements-bar {
+.records-bar {
   display: flex;
   align-items: center;
   gap: 10px;
@@ -3717,7 +3662,7 @@ dialog.scanner::backdrop { background: #14120ee6; }
   background: var(--paper);
 }
 
-.agreements-bar .segmented b {
+.records-bar .segmented b {
   margin-left: 6px;
   font-size: 9.5px;
   letter-spacing: .04em;
@@ -3726,20 +3671,22 @@ dialog.scanner::backdrop { background: #14120ee6; }
 }
 
 /* the search field takes the slack so the two switches stay at the ends */
-.agreements-bar .search { margin-left: auto; }
-.agreements-bar .search input { width: 260px; }
+.records-bar .search { margin-left: auto; }
+.records-bar .search input { width: 260px; }
 
-.agreements-table { max-height: calc(100vh - 300px); }
-.agreements-table table { min-width: 880px; }
-.agreements-table td.num a {
+.records-table { max-height: calc(100vh - 300px); }
+.records-table table { min-width: 880px; }
+/* the quotation book carries one vehicle and one figure, so it needs less width */
+#workspaceView .records-table table { min-width: 720px; }
+.records-table td.num a {
   font-family: var(--mono);
   font-weight: 700;
   border-bottom: 1px solid transparent;
 }
 
-.agreements-table td.vehicle { min-width: 170px; }
-.agreements-table td.vehicle b { display: block; font-size: 13px; }
-.agreements-table td.vehicle span {
+.records-table td.vehicle { min-width: 170px; }
+.records-table td.vehicle b { display: block; font-size: 13px; }
+.records-table td.vehicle span {
   display: block;
   margin-top: 2px;
   color: var(--muted);
@@ -3747,8 +3694,8 @@ dialog.scanner::backdrop { background: #14120ee6; }
   font-size: 10.5px;
 }
 
-.agreements-table td.parties { min-width: 175px; }
-.agreements-table td.parties span {
+.records-table td.parties { min-width: 175px; }
+.records-table td.parties span {
   display: block;
   max-width: 210px;
   overflow: hidden;
@@ -3756,7 +3703,7 @@ dialog.scanner::backdrop { background: #14120ee6; }
   white-space: nowrap;
 }
 
-.agreements-table td.parties i {
+.records-table td.parties i {
   display: block;
   color: var(--red);
   font-size: 9px;
@@ -3764,9 +3711,9 @@ dialog.scanner::backdrop { background: #14120ee6; }
   line-height: 1.2;
 }
 
-.agreements-table td.money { white-space: nowrap; }
+.records-table td.money { white-space: nowrap; }
 
-.agreements-note {
+.records-note {
   display: flex;
   gap: 8px 22px;
   flex-wrap: wrap;
@@ -3778,20 +3725,20 @@ dialog.scanner::backdrop { background: #14120ee6; }
   text-transform: uppercase;
 }
 
-.agreements-note span + span::before {
+.records-note span + span::before {
   content: "·";
   margin-right: 22px;
   color: var(--line);
 }
 
 @media (max-width: 720px) {
-  .agreements-wrap { padding: 18px 14px 40px; }
-  .agreements-head { align-items: flex-start; flex-direction: column; gap: 12px; }
-  .agreements-head-actions { justify-content: flex-start; }
-  .agreements-title h1 { font-size: 25px; }
-  .agreements-bar .search { margin-left: 0; width: 100%; }
-  .agreements-bar .search input { width: 100%; flex: 1 1 auto; }
-  .agreements-table { max-height: none; }
+  .records-wrap { padding: 18px 14px 40px; }
+  .records-head { align-items: flex-start; flex-direction: column; gap: 12px; }
+  .records-head-actions { justify-content: flex-start; }
+  .records-title h1 { font-size: 25px; }
+  .records-bar .search { margin-left: 0; width: 100%; }
+  .records-bar .search input { width: 100%; flex: 1 1 auto; }
+  .records-table { max-height: none; }
 }
 
 /* ========================== agreement wizard ========================== */
@@ -3803,6 +3750,12 @@ dialog.wizard {
   width: min(880px, calc(100vw - 24px));
   max-height: calc(100vh - 32px);
 }
+
+/* one sheet, one pass: the quotation dialog is the same card as the wizard, narrower */
+dialog.wizard.compact { width: min(680px, calc(100vw - 24px)); }
+
+/* the money field is a figure, not a paragraph: it never needs the full row */
+.quote-value input { max-width: 260px; }
 
 .wizard-card {
   display: flex;
