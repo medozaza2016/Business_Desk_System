@@ -56,7 +56,7 @@ const AGREEMENT_TEXT_LIMITS = {
   vehicle_color: 40, vehicle_odometer: 40, vehicle_registration_place: 80,
   seller_name: 120, seller_id_number: 60, seller_phone: 40, seller_address: 200,
   buyer_name: 120, buyer_id_number: 60, buyer_phone: 40, buyer_address: 200,
-  intermediary_name: 120, intermediary_phone: 40, intermediary_commission: 120,
+  intermediary_name: 120, intermediary_id_number: 60, intermediary_phone: 40, intermediary_address: 200,
 };
 /* Required on every agreement; the rest may stay blank and simply print empty. */
 const AGREEMENT_REQUIRED_TEXT = ["vehicle_model", "vehicle_year", "vehicle_chassis", "seller_name", "buyer_name"];
@@ -1018,8 +1018,8 @@ const PREVIEW_AGREEMENT = {
   seller_phone: "+971 50 123 4567", seller_address: "Al Quoz 1, Dubai",
   buyer_name: "Sunrise Trading LLC", buyer_id_number: "8842130",
   buyer_phone: "+971 55 765 4321", buyer_address: "Deira, Dubai",
-  intermediary_name: "Challenger Motors LLC", intermediary_phone: "+971 4 000 1111",
-  intermediary_commission: "AED 2,000 from the seller",
+  intermediary_name: "Challenger Motors LLC", intermediary_id_number: "7733105",
+  intermediary_phone: "+971 4 000 1111", intermediary_address: "Al Quoz 3, Dubai",
   full_cents: 18500000, paid_cents: 2500000,
   notes: "Sold as seen, two keys, service book included.",
 };
@@ -1072,8 +1072,9 @@ const renderAgreementTemplatePreview = async (env, company, html, kind) => {
     buyer_phone: PREVIEW_AGREEMENT.buyer_phone,
     buyer_address: PREVIEW_AGREEMENT.buyer_address,
     intermediary_name: PREVIEW_AGREEMENT.intermediary_name,
+    intermediary_id_number: PREVIEW_AGREEMENT.intermediary_id_number,
     intermediary_phone: PREVIEW_AGREEMENT.intermediary_phone,
-    intermediary_commission: PREVIEW_AGREEMENT.intermediary_commission,
+    intermediary_address: PREVIEW_AGREEMENT.intermediary_address,
     /* the same note the worksheet's sample vehicle carries, so notes_state can be proofed */
     notes: PREVIEW_AGREEMENT.notes,
     full_amount_cents: PREVIEW_AGREEMENT.full_cents,
@@ -1763,7 +1764,7 @@ const AGREEMENT_COLUMNS =
   "vehicle_model,vehicle_year,vehicle_chassis,vehicle_plate,vehicle_color,vehicle_odometer," +
   "vehicle_registration_place,seller_name,seller_id_number,seller_phone,seller_address," +
   "buyer_name,buyer_id_number,buyer_phone,buyer_address," +
-  "intermediary_name,intermediary_phone,intermediary_commission," +
+  "intermediary_name,intermediary_id_number,intermediary_phone,intermediary_address," +
   "full_amount_cents,paid_amount_cents,full_amount_words,paid_amount_words,currency,notes," +
   "company_snapshot_json,status,completed_at,share_token,share_token_created_at,created_at,updated_at";
 
@@ -1775,7 +1776,7 @@ const AGREEMENT_FIELDS = [
   "vehicle_odometer", "vehicle_registration_place",
   "seller_name", "seller_id_number", "seller_phone", "seller_address",
   "buyer_name", "buyer_id_number", "buyer_phone", "buyer_address",
-  "intermediary_name", "intermediary_phone", "intermediary_commission",
+  "intermediary_name", "intermediary_id_number", "intermediary_phone", "intermediary_address",
   "full_amount_cents", "paid_amount_cents", "full_amount_words", "paid_amount_words",
   "currency", "notes", "template_html_snapshot", "company_snapshot_json",
 ];
@@ -2168,6 +2169,18 @@ const COMPANY_JOIN_COLUMNS =
 
 const agreementKindLabel = (kind) => AGREEMENT_KIND_LABELS[kind] || "Agreement";
 
+/** "has-value" / "no-value": a template drops an optional row by its own class. */
+const fieldState = (value) => (String(value ?? "").trim() ? "has-value" : "no-value");
+
+/* Optional agreement text. Each one also prints a <field>_state token, so a sheet can
+   hide the row the desk left blank without any scripting or template logic. */
+const AGREEMENT_OPTIONAL_TEXT = [
+  "vehicle_plate", "vehicle_color", "vehicle_odometer", "vehicle_registration_place",
+  "seller_id_number", "seller_phone", "seller_address",
+  "buyer_id_number", "buyer_phone", "buyer_address",
+  "intermediary_name", "intermediary_id_number", "intermediary_phone", "intermediary_address",
+];
+
 /**
  * The agreement sheet's own tokens, on top of the shared company block. Percentages
  * and dates are pre-formatted: a template must never do arithmetic or date maths.
@@ -2176,9 +2189,9 @@ const buildAgreementPrintFields = (row) => {
   const full = Number(row.full_amount_cents || 0);
   const paid = Number(row.paid_amount_cents || 0);
   const balance = full - paid;
-  const intermediaryName = row.intermediary_name || "";
-  const intermediaryPhone = row.intermediary_phone || "";
-  return {
+  const hasIntermediary = ["intermediary_name", "intermediary_id_number", "intermediary_phone",
+    "intermediary_address"].some((name) => String(row[name] || "").trim());
+  const fields = {
     agreement_number: row.agreement_number,
     agreement_date: formatDateDMY(row.agreement_date),
     agreement_kind: row.kind,
@@ -2199,10 +2212,11 @@ const buildAgreementPrintFields = (row) => {
     buyer_phone: row.buyer_phone || "",
     buyer_address: row.buyer_address || "",
     /* present-but-empty: the template decides whether an empty row still prints */
-    intermediary_name: intermediaryName,
-    intermediary_phone: intermediaryPhone,
-    intermediary_commission: row.intermediary_commission || "",
-    intermediary_state: intermediaryName || intermediaryPhone ? "has-intermediary" : "no-intermediary",
+    intermediary_name: row.intermediary_name || "",
+    intermediary_id_number: row.intermediary_id_number || "",
+    intermediary_phone: row.intermediary_phone || "",
+    intermediary_address: row.intermediary_address || "",
+    intermediary_state: hasIntermediary ? "has-intermediary" : "no-intermediary",
     full_amount: formatMoney(full),
     full_amount_words: row.full_amount_words || "",
     paid_amount: formatMoney(paid),
@@ -2213,6 +2227,9 @@ const buildAgreementPrintFields = (row) => {
     notes_state: row.notes ? "has-notes" : "no-notes",
     ...companyPrintFields(row),
   };
+  /* every optional row carries its own switch: class="{{seller_phone_state}}" */
+  for (const name of AGREEMENT_OPTIONAL_TEXT) fields[`${name}_state`] = fieldState(fields[name]);
+  return fields;
 };
 
 const agreementSheetRow = (env, id) =>
@@ -2393,14 +2410,16 @@ const handleAgreementCsvExport = async (env, url) => {
   const rows = await env.DB.prepare(
     "SELECT kind,agreement_number,agreement_date,vehicle_model,vehicle_year,vehicle_chassis," +
     "vehicle_plate,vehicle_color,seller_name,seller_id_number,seller_phone,buyer_name,buyer_id_number," +
-    "buyer_phone,intermediary_name,intermediary_commission,full_amount_cents,paid_amount_cents," +
+    "buyer_phone,intermediary_name,intermediary_id_number,intermediary_phone,intermediary_address," +
+    "full_amount_cents,paid_amount_cents," +
     "currency,status,notes,created_at FROM agreements WHERE company_id=? " +
     `${kind ? "AND kind=? " : ""}AND deleted_at IS NULL ORDER BY agreement_number DESC`
   ).bind(companyId, ...(kind ? [kind] : [])).all();
 
   const lines = [
     "kind,agreement,date,model,year,chassis,plate,color,seller,seller_id,seller_phone," +
-    "buyer,buyer_id,buyer_phone,intermediary,commission,full_amount,paid_amount,balance," +
+    "buyer,buyer_id,buyer_phone,intermediary,intermediary_id,intermediary_phone," +
+    "intermediary_address,full_amount,paid_amount,balance," +
     "currency,status,notes,created",
   ];
   for (const row of rows.results || []) {
@@ -2410,7 +2429,8 @@ const handleAgreementCsvExport = async (env, url) => {
       row.kind, row.agreement_number, row.agreement_date, row.vehicle_model, row.vehicle_year,
       row.vehicle_chassis, row.vehicle_plate, row.vehicle_color, row.seller_name, row.seller_id_number,
       row.seller_phone, row.buyer_name, row.buyer_id_number, row.buyer_phone, row.intermediary_name,
-      row.intermediary_commission, (full / 100).toFixed(2), (paid / 100).toFixed(2),
+      row.intermediary_id_number, row.intermediary_phone, row.intermediary_address,
+      (full / 100).toFixed(2), (paid / 100).toFixed(2),
       ((full - paid) / 100).toFixed(2), row.currency || company.currency, row.status, row.notes,
       row.created_at,
     ].map(csvCell).join(","));

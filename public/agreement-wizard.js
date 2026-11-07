@@ -26,9 +26,11 @@ const TEXT_FIELDS = {
   buyer_id_number: "awBuyerId",
   buyer_phone: "awBuyerPhone",
   buyer_address: "awBuyerAddress",
+  /* the broker is a party like the seller and the buyer, just optional */
   intermediary_name: "awIntermediaryName",
+  intermediary_id_number: "awIntermediaryId",
   intermediary_phone: "awIntermediaryPhone",
-  intermediary_commission: "awIntermediaryCommission",
+  intermediary_address: "awIntermediaryAddress",
 };
 
 /** What each step refuses to move past, and how it says so. */
@@ -58,8 +60,10 @@ const REVIEW_ROWS = [
   ["Buyer", (v) => [v.buyer_name, v.buyer_id_number && `ID ${v.buyer_id_number}`, v.buyer_phone]
     .filter(Boolean).join(" · ")],
   ["Buyer address", (v) => v.buyer_address],
-  ["Intermediary", (v) => [v.intermediary_name, v.intermediary_phone, v.intermediary_commission]
+  ["Intermediary", (v) => [v.intermediary_name,
+    v.intermediary_id_number && `ID ${v.intermediary_id_number}`, v.intermediary_phone]
     .filter(Boolean).join(" · ")],
+  ["Intermediary address", (v) => v.intermediary_address],
   ["Notes", (v) => v.notes],
 ];
 

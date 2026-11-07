@@ -257,8 +257,9 @@ function paintForm(agreement) {
   $("fBuyerPhone").value = agreement.buyer_phone || "";
   $("fBuyerAddress").value = agreement.buyer_address || "";
   $("fIntermediaryName").value = agreement.intermediary_name || "";
+  $("fIntermediaryId").value = agreement.intermediary_id_number || "";
   $("fIntermediaryPhone").value = agreement.intermediary_phone || "";
-  $("fIntermediaryCommission").value = agreement.intermediary_commission || "";
+  $("fIntermediaryAddress").value = agreement.intermediary_address || "";
   $("fCurrency").textContent = agreement.currency || "AED";
   $("fFull").value = decimal(agreement.full_amount_cents);
   $("fPaid").value = decimal(agreement.paid_amount_cents);
@@ -272,7 +273,7 @@ function paintForm(agreement) {
   for (const id of ["fDate", "fModel", "fYear", "fChassis", "fPlate", "fColor", "fOdometer",
     "fRegistration", "fSellerName", "fSellerId", "fSellerPhone", "fSellerAddress",
     "fBuyerName", "fBuyerId", "fBuyerPhone", "fBuyerAddress", "fIntermediaryName",
-    "fIntermediaryPhone", "fIntermediaryCommission", "fFull", "fPaid", "fNotes"]) {
+    "fIntermediaryId", "fIntermediaryPhone", "fIntermediaryAddress", "fFull", "fPaid", "fNotes"]) {
     $(id).readOnly = completed;
   }
   $("formNote").textContent = completed
@@ -383,8 +384,9 @@ const TEXT_INPUTS = [
   ["fBuyerPhone", "buyer_phone"],
   ["fBuyerAddress", "buyer_address"],
   ["fIntermediaryName", "intermediary_name"],
+  ["fIntermediaryId", "intermediary_id_number"],
   ["fIntermediaryPhone", "intermediary_phone"],
-  ["fIntermediaryCommission", "intermediary_commission"],
+  ["fIntermediaryAddress", "intermediary_address"],
 ];
 
 async function save(event) {

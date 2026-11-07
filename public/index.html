@@ -433,6 +433,48 @@
               <b>Purchase agreement</b><small>—</small>
             </button>
           </div>
+          <details class="studio-guide" id="studioGuide">
+            <summary>
+              <span class="guide-title">How to build this sheet</span>
+              <span class="guide-sub">placeholders, print rules, and what a redesign may not do</span>
+            </summary>
+            <div class="studio-guide-body">
+              <ol class="guide-steps">
+                <li><b>Start from a page that already prints.</b> <em>Load built-in</em> drops the bundled A4
+                  sheet for this tab into the editor; redesign its markup and CSS instead of starting from an
+                  empty buffer.</li>
+                <li><b>Ship a complete document.</b> <code>&lt;!doctype html&gt;</code> …
+                  <code>&lt;/html&gt;</code>. The Worker only substitutes values, and appends its autoprint
+                  snippet for <code>?print=1</code> — nothing else.</li>
+                <li><b>Write values as <code>{{token}}</code>.</b> Names use letters, digits and <code>_</code>
+                  only; whitespace inside the braces is ignored. Values are HTML-escaped, so the template owns
+                  the tags and the record owns the text.</li>
+                <li><b>Style it inline.</b> One <code>&lt;style&gt;</code> block, no external CSS, no web fonts.
+                  A4 is 210 × 297 mm: position in millimetres and keep the page to a single sheet.</li>
+                <li><b>Let blank fields disappear.</b> Every optional field prints a companion
+                  <code>{{field_state}}</code> (<code>has-value</code> / <code>no-value</code>); put it in the
+                  row's <code>class</code> and hide that class in CSS. Same idea for
+                  <code>{{intermediary_state}}</code> (the whole broker block) and <code>{{notes_state}}</code>.</li>
+                <li><b>Keep it inert.</b> No <code>&lt;script&gt;</code> (the print CSP refuses it), no forms,
+                  no remote images — same-origin and <code>data:</code> URIs only.</li>
+                <li><b>Proof, then publish.</b> <em>Preview edits</em> opens the buffer in its own tab,
+                  rendered with sample parties, a sample vehicle and the next number — nothing is saved.
+                  <b>Publish version</b> makes it live for new records only.</li>
+              </ol>
+              <p class="guide-note">
+                Tokens are flat substitutions — there are no loops, conditionals, filters or arithmetic. Anything
+                that repeats is written out once in the template; anything that has to adapt is done with the
+                state classes above. Money is never hidden: the agreed price, the deposit (even
+                <code>0.00</code>) and the balance always print.
+              </p>
+              <div class="guide-tokens-head">
+                <h4>Available placeholders — <span id="guideKind">Quotation</span></h4>
+                <span class="guide-count" id="guideCount">—</span>
+              </div>
+              <div class="guide-tokens" id="guideTokens"></div>
+            </div>
+          </details>
+
           <div class="studio-col">
             <div class="studio-block-head">
               <h3>Versions</h3>
@@ -460,23 +502,9 @@
               <button class="btn ghost" type="button" id="templateDefault">Load built-in</button>
               <button class="btn ghost" type="button" id="templateLoad">Reload live</button>
             </div>
+            <p class="studio-hint" id="studioNote">Proofs open in their own tab, rendered with sample parties and the next number.</p>
           </div>
 
-          <div class="studio-preview">
-            <div class="studio-preview-head">
-              <h3>Sheet preview</h3>
-              <span class="chip" id="previewSourceChip">live</span>
-            </div>
-            <div class="preview-stage" id="studioStage">
-              <div class="preview-frame" id="studioFrame">
-                <iframe id="studioPreview" title="Print template preview" sandbox></iframe>
-              </div>
-            </div>
-            <div class="preview-note">
-              <span id="studioNote">sample vehicle</span>
-              <button class="btn ghost small" type="button" id="studioRefresh">Refresh</button>
-            </div>
-          </div>
         </div>
       </section>
 
@@ -667,12 +695,12 @@
         </div>
         <h3 class="wizard-group">Intermediary <em>optional</em></h3>
         <div class="grid-2">
-          <label class="field"><span class="field-label">Name</span><input id="awIntermediaryName" maxlength="120"></label>
-          <label class="field"><span class="field-label">Phone</span><input id="awIntermediaryPhone" maxlength="40" inputmode="tel"></label>
-          <label class="field span-2"><span class="field-label">Commission</span><input id="awIntermediaryCommission" maxlength="120" placeholder="AED 1,000 paid by the buyer"></label>
+          <label class="field span-2"><span class="field-label">Full name</span><input id="awIntermediaryName" maxlength="120" placeholder="Name on the ID"></label>
+          <label class="field"><span class="field-label">ID number <em>optional</em></span><input id="awIntermediaryId" maxlength="60"></label>
+          <label class="field"><span class="field-label">Phone <em>optional</em></span><input id="awIntermediaryPhone" maxlength="40" inputmode="tel"></label>
+          <label class="field span-2"><span class="field-label">Address <em>optional</em></span><input id="awIntermediaryAddress" maxlength="200"></label>
         </div>
       </section>
-
 
       <section class="wizard-step" data-step="4" hidden>
         <p class="wizard-lede">The agreed price, what is paid on signing, and what stays owed.</p>

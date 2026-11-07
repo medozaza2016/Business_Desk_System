@@ -7,9 +7,9 @@
 <title>Vehicle Sale Agreement {{agreement_number}}</title>
 <style>
   /* A4 sale agreement. Every value is a flat {{token}} so the Worker can hydrate the
-     document without any scripting; the one conditional in the layout is the
-     intermediary band, switched by the intermediary_state class on <body>
-     (has-intermediary / no-intermediary). */
+     document without any scripting. Conditionals are class tokens: the <body> carries
+     logo_state and intermediary_state, and every optional row carries its own
+     <field>_state (has-value / no-value), so a field left blank prints nothing. */
   @page { size: A4 portrait; margin: 0; }
   * { box-sizing: border-box; }
   html, body { margin: 0; padding: 0; width: 210mm; min-height: 297mm; }
@@ -140,23 +140,19 @@
   .party-row span:first-child { color: #6e6a62; }
   .party-row span:last-child { font-weight: 700; text-align: right; }
 
-  .intermediary {
-    margin-top: 3mm;
-    display: grid;
-    grid-template-columns: auto 1fr auto;
-    gap: 4mm;
-    align-items: baseline;
-    padding: 2.2mm 3.2mm;
+  /* The broker joins the parties as a third card with the same rows as the seller and
+     the buyer; it spans the full width and drops out when no broker was recorded. */
+  .party.intermediary {
+    grid-column: 1 / -1;
     background: #faf8f4;
-    border: .3mm dashed #c51e25;
-    border-radius: 1.5mm;
-    font-size: 2.9mm;
+    border-top-color: #c51e25;
   }
-  .intermediary-role { font-size: 2.5mm; font-weight: 700; letter-spacing: .16em; text-transform: uppercase; color: #c51e25; }
-  .intermediary-name { font-weight: 900; }
-  .intermediary-arm { color: #6e6a62; }
-  /* the whole band disappears when the record carries no broker */
-  body.no-intermediary .intermediary { display: none; }
+  body.no-intermediary .party.intermediary { display: none; }
+
+  /* An optional row the desk left blank prints nothing: the Worker renders
+     {{seller_phone_state}} and friends as has-value / no-value. */
+  .party-row.no-value { display: none; }
+  table.grid tr.no-value { display: none; }
 
   /* --------------------------------------------------------------- vehicle --- */
   table.grid { width: 100%; border-collapse: collapse; }
@@ -216,6 +212,8 @@
   .sign-role-ar { direction: rtl; font-size: 2.5mm; color: #6e6a62; }
   .sign-line { height: 14mm; }
   .sign-name { font-size: 2.9mm; color: #4a4843; }
+  /* no broker on the record means no broker signature line */
+  body.no-intermediary .intermediary-sign { display: none; }
 
   .foot {
     position: absolute;
@@ -282,22 +280,24 @@
       <div class="party">
         <div class="party-role">Seller <span class="party-role-ar" lang="ar" dir="rtl">البائع</span></div>
         <div class="party-name">{{seller_name}}</div>
-        <div class="party-row"><span>ID / Passport</span><span>{{seller_id_number}}</span></div>
-        <div class="party-row"><span>Phone</span><span>{{seller_phone}}</span></div>
-        <div class="party-row"><span>Address</span><span>{{seller_address}}</span></div>
+        <div class="party-row {{seller_id_number_state}}"><span>ID / Passport</span><span>{{seller_id_number}}</span></div>
+        <div class="party-row {{seller_phone_state}}"><span>Phone</span><span>{{seller_phone}}</span></div>
+        <div class="party-row {{seller_address_state}}"><span>Address</span><span>{{seller_address}}</span></div>
       </div>
       <div class="party">
         <div class="party-role">Buyer <span class="party-role-ar" lang="ar" dir="rtl">المشتري</span></div>
         <div class="party-name">{{buyer_name}}</div>
-        <div class="party-row"><span>ID / Passport</span><span>{{buyer_id_number}}</span></div>
-        <div class="party-row"><span>Phone</span><span>{{buyer_phone}}</span></div>
-        <div class="party-row"><span>Address</span><span>{{buyer_address}}</span></div>
+        <div class="party-row {{buyer_id_number_state}}"><span>ID / Passport</span><span>{{buyer_id_number}}</span></div>
+        <div class="party-row {{buyer_phone_state}}"><span>Phone</span><span>{{buyer_phone}}</span></div>
+        <div class="party-row {{buyer_address_state}}"><span>Address</span><span>{{buyer_address}}</span></div>
       </div>
-    </div>
-    <div class="intermediary">
-      <span class="intermediary-role">Intermediary <span class="intermediary-arm" lang="ar" dir="rtl">الوسيط</span></span>
-      <span><span class="intermediary-name">{{intermediary_name}}</span> · {{intermediary_phone}}</span>
-      <span>{{intermediary_commission}}</span>
+      <div class="party intermediary {{intermediary_state}}">
+        <div class="party-role">Intermediary <span class="party-role-ar" lang="ar" dir="rtl">الوسيط</span></div>
+        <div class="party-name">{{intermediary_name}}</div>
+        <div class="party-row {{intermediary_id_number_state}}"><span>ID / Passport</span><span>{{intermediary_id_number}}</span></div>
+        <div class="party-row {{intermediary_phone_state}}"><span>Phone</span><span>{{intermediary_phone}}</span></div>
+        <div class="party-row {{intermediary_address_state}}"><span>Address</span><span>{{intermediary_address}}</span></div>
+      </div>
     </div>
   </section>
 
@@ -311,10 +311,10 @@
       <tr><th>Make and model <small>الطراز</small></th><td>{{vehicle_model}}</td></tr>
       <tr><th>Model year <small>سنة الصنع</small></th><td>{{vehicle_year}}</td></tr>
       <tr><th>Chassis number <small>رقم الهيكل</small></th><td class="mono">{{vehicle_chassis}}</td></tr>
-      <tr><th>Plate number <small>رقم اللوحة</small></th><td>{{vehicle_plate}}</td></tr>
-      <tr><th>Colour <small>اللون</small></th><td>{{vehicle_color}}</td></tr>
-      <tr><th>Odometer <small>عداد المسافات</small></th><td>{{vehicle_odometer}}</td></tr>
-      <tr><th>Registered in <small>مكان التسجيل</small></th><td>{{vehicle_registration_place}}</td></tr>
+      <tr class="{{vehicle_plate_state}}"><th>Plate number <small>رقم اللوحة</small></th><td>{{vehicle_plate}}</td></tr>
+      <tr class="{{vehicle_color_state}}"><th>Colour <small>اللون</small></th><td>{{vehicle_color}}</td></tr>
+      <tr class="{{vehicle_odometer_state}}"><th>Odometer <small>عداد المسافات</small></th><td>{{vehicle_odometer}}</td></tr>
+      <tr class="{{vehicle_registration_place_state}}"><th>Registered in <small>مكان التسجيل</small></th><td>{{vehicle_registration_place}}</td></tr>
     </table>
   </section>
 
@@ -386,7 +386,7 @@
         <div class="sign-role">Buyer <span class="sign-role-ar" lang="ar" dir="rtl">المشتري</span></div>
         <div class="sign-name">{{buyer_name}}</div>
       </div>
-      <div class="sign">
+      <div class="sign intermediary-sign">
         <div class="sign-line"></div>
         <div class="sign-role">Intermediary <span class="sign-role-ar" lang="ar" dir="rtl">الوسيط</span></div>
         <div class="sign-name">{{intermediary_name}}</div>
